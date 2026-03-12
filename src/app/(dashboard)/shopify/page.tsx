@@ -8,6 +8,12 @@ import {
   customerMix,
   hourlyOrders,
   geoData,
+  shopifyFunnel,
+  shopifyRepeatData,
+  shopifyDailyOrders,
+  shopifyCategories,
+  shopifyLTV,
+  cohortData,
 } from "@/lib/mock-data";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import {
@@ -20,6 +26,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
 import clsx from "clsx";
 
@@ -29,7 +36,22 @@ function formatDollar(value: number): string {
   return `$${value}`;
 }
 
+const tooltipStyle = {
+  backgroundColor: "#18181B",
+  border: "1px solid #27272A",
+  borderRadius: 8,
+  color: "#F4F4F5",
+  fontSize: 13,
+};
+
+const tooltipLabelStyle = { color: "#71717A", marginBottom: 4 };
+
+const axisTickStyle = { fill: "#71717A", fontSize: 12 };
+const axisTickSmall = { fill: "#71717A", fontSize: 11 };
+
 export default function ShopifyPage() {
+  const maxFunnelValue = shopifyFunnel[0].value;
+
   return (
     <div className="space-y-6">
       {/* ── KPI Cards ── */}
@@ -86,26 +108,20 @@ export default function ShopifyPage() {
             <CartesianGrid stroke="#1F1F23" strokeDasharray="none" vertical={false} />
             <XAxis
               dataKey="date"
-              tick={{ fill: "#71717A", fontSize: 12 }}
+              tick={axisTickStyle}
               axisLine={{ stroke: "#1F1F23" }}
               tickLine={false}
             />
             <YAxis
               tickFormatter={formatDollar}
-              tick={{ fill: "#71717A", fontSize: 12 }}
+              tick={axisTickStyle}
               axisLine={false}
               tickLine={false}
               width={60}
             />
             <Tooltip
-              contentStyle={{
-                backgroundColor: "#18181B",
-                border: "1px solid #27272A",
-                borderRadius: 8,
-                color: "#F4F4F5",
-                fontSize: 13,
-              }}
-              labelStyle={{ color: "#71717A", marginBottom: 4 }}
+              contentStyle={tooltipStyle}
+              labelStyle={tooltipLabelStyle}
               formatter={((value: number) => [formatDollar(value), "Revenue"]) as never}
             />
             <Area
@@ -119,6 +135,57 @@ export default function ShopifyPage() {
             />
           </AreaChart>
         </ResponsiveContainer>
+      </div>
+
+      {/* ── Conversion Funnel ── */}
+      <div className="rounded-lg border border-border bg-surface p-5">
+        <h3 className="mb-4 text-sm font-medium text-zinc-400">
+          Conversion Funnel
+        </h3>
+        <div className="space-y-3">
+          {shopifyFunnel.map((step, i) => {
+            const widthPct = (step.value / maxFunnelValue) * 100;
+            return (
+              <div key={step.stage} className="flex items-center gap-4">
+                <div className="w-28 shrink-0 text-right text-sm text-zinc-300">
+                  {step.stage}
+                </div>
+                <div className="relative flex-1">
+                  <div
+                    className="h-8 rounded"
+                    style={{
+                      width: `${widthPct}%`,
+                      backgroundColor: `rgba(150, 191, 72, ${0.25 + (1 - i / (shopifyFunnel.length - 1)) * 0.55})`,
+                      minWidth: "2rem",
+                    }}
+                  />
+                  <div className="absolute inset-y-0 left-2 flex items-center">
+                    <span className="font-mono text-xs font-medium text-zinc-100">
+                      {step.value.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+                <div className="w-16 shrink-0 text-right">
+                  {step.rate !== null ? (
+                    <span className="font-mono text-xs text-zinc-400">
+                      {formatPercent(step.rate)}
+                    </span>
+                  ) : (
+                    <span className="font-mono text-xs text-zinc-600">—</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
+          <span className="text-xs text-zinc-500">Overall conversion rate:</span>
+          <span className="font-mono text-sm font-medium text-zinc-200">
+            {formatPercent(
+              (shopifyFunnel[shopifyFunnel.length - 1].value / shopifyFunnel[0].value) * 100
+            )}
+          </span>
+        </div>
       </div>
 
       {/* ── Customer Mix + Top Products ── */}
@@ -165,27 +232,21 @@ export default function ShopifyPage() {
               <CartesianGrid stroke="#1F1F23" strokeDasharray="none" vertical={false} />
               <XAxis
                 dataKey="date"
-                tick={{ fill: "#71717A", fontSize: 11 }}
+                tick={axisTickSmall}
                 axisLine={{ stroke: "#1F1F23" }}
                 tickLine={false}
                 interval={6}
               />
               <YAxis
                 tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
-                tick={{ fill: "#71717A", fontSize: 11 }}
+                tick={axisTickSmall}
                 axisLine={false}
                 tickLine={false}
                 width={40}
               />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: "#18181B",
-                  border: "1px solid #27272A",
-                  borderRadius: 8,
-                  color: "#F4F4F5",
-                  fontSize: 12,
-                }}
-                labelStyle={{ color: "#71717A", marginBottom: 4 }}
+                contentStyle={{ ...tooltipStyle, fontSize: 12 }}
+                labelStyle={tooltipLabelStyle}
                 formatter={((value: number, name: string) => [
                   `${value}%`,
                   name === "new" ? "New" : "Returning",
@@ -211,57 +272,375 @@ export default function ShopifyPage() {
           </ResponsiveContainer>
         </div>
 
-        {/* Top Products */}
+        {/* Daily Orders by Type */}
         <div className="rounded-lg border border-border bg-surface p-5">
-          <h3 className="mb-4 text-sm font-medium text-zinc-400">Top Products</h3>
-          <div className="overflow-x-auto">
+          <h3 className="mb-4 text-sm font-medium text-zinc-400">
+            Daily Orders by Type — Last 28 Days
+          </h3>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart
+              data={shopifyDailyOrders}
+              margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+            >
+              <CartesianGrid stroke="#1F1F23" strokeDasharray="none" vertical={false} />
+              <XAxis
+                dataKey="date"
+                tick={axisTickSmall}
+                axisLine={{ stroke: "#1F1F23" }}
+                tickLine={false}
+                interval={6}
+              />
+              <YAxis
+                tick={axisTickSmall}
+                axisLine={false}
+                tickLine={false}
+                width={30}
+              />
+              <Tooltip
+                contentStyle={{ ...tooltipStyle, fontSize: 12 }}
+                labelStyle={tooltipLabelStyle}
+                formatter={((value: number, name: string) => [
+                  value,
+                  name === "newOrders" ? "New Orders" : "Repeat Orders",
+                ]) as never}
+              />
+              <Legend
+                formatter={(value: string) =>
+                  value === "newOrders" ? "New Orders" : "Repeat Orders"
+                }
+                wrapperStyle={{ fontSize: 12, color: "#71717A" }}
+              />
+              <Bar
+                dataKey="newOrders"
+                stackId="orders"
+                fill="#22C55E"
+                radius={[0, 0, 0, 0]}
+                maxBarSize={18}
+              />
+              <Bar
+                dataKey="repeatOrders"
+                stackId="orders"
+                fill="#3B82F6"
+                radius={[3, 3, 0, 0]}
+                maxBarSize={18}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* ── Product Category Breakdown ── */}
+      <div className="rounded-lg border border-border bg-surface p-5">
+        <h3 className="mb-4 text-sm font-medium text-zinc-400">
+          Product Category Breakdown
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
+                <th className="px-3 py-2">Category</th>
+                <th className="px-3 py-2 text-right">Revenue</th>
+                <th className="px-3 py-2 text-right">Units</th>
+                <th className="px-3 py-2 text-right">AOV</th>
+                <th className="px-3 py-2" style={{ minWidth: 200 }}>
+                  Share
+                </th>
+                <th className="px-3 py-2 text-right">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shopifyCategories.map((cat) => {
+                const positive = cat.change >= 0;
+                return (
+                  <tr
+                    key={cat.category}
+                    className="border-b border-border/50 transition-colors hover:bg-white/[0.02]"
+                  >
+                    <td className="px-3 py-2 font-medium text-zinc-200">
+                      {cat.category}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                      {formatCurrency(cat.revenue)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                      {cat.units.toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                      {formatCurrency(cat.aov, 2)}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-800">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${cat.pct}%`,
+                              backgroundColor: "#96BF48",
+                            }}
+                          />
+                        </div>
+                        <span className="w-10 shrink-0 text-right font-mono text-xs text-zinc-400">
+                          {formatPercent(cat.pct)}
+                        </span>
+                      </div>
+                    </td>
+                    <td
+                      className={clsx(
+                        "px-3 py-2 text-right font-mono text-xs",
+                        positive ? "text-emerald-400" : "text-red-400"
+                      )}
+                    >
+                      {positive ? "+" : ""}
+                      {cat.change}%
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Top Products ── */}
+      <div className="rounded-lg border border-border bg-surface p-5">
+        <h3 className="mb-4 text-sm font-medium text-zinc-400">Top Products</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
+                <th className="px-2 py-2">#</th>
+                <th className="px-2 py-2">Product</th>
+                <th className="px-2 py-2 text-right">Revenue</th>
+                <th className="px-2 py-2 text-right">Units</th>
+                <th className="px-2 py-2 text-right">AOV</th>
+                <th className="px-2 py-2 text-right">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topProducts.map((p, i) => {
+                const positive = p.change >= 0;
+                return (
+                  <tr
+                    key={p.sku}
+                    className="border-b border-border/50 transition-colors hover:bg-white/[0.02]"
+                  >
+                    <td className="px-2 py-2 font-mono text-xs text-zinc-500">
+                      {i + 1}
+                    </td>
+                    <td className="px-2 py-2 font-medium text-zinc-200">{p.name}</td>
+                    <td className="px-2 py-2 text-right font-mono text-zinc-300">
+                      {formatCurrency(p.revenue)}
+                    </td>
+                    <td className="px-2 py-2 text-right font-mono text-zinc-300">
+                      {p.units.toLocaleString()}
+                    </td>
+                    <td className="px-2 py-2 text-right font-mono text-zinc-300">
+                      {formatCurrency(p.aov, 2)}
+                    </td>
+                    <td
+                      className={clsx(
+                        "px-2 py-2 text-right font-mono text-xs",
+                        positive ? "text-emerald-400" : "text-red-400"
+                      )}
+                    >
+                      {positive ? "+" : ""}
+                      {p.change}%
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Customer Lifetime Value ── */}
+      <div className="rounded-lg border border-border bg-surface p-5">
+        <h3 className="mb-4 text-sm font-medium text-zinc-400">
+          Customer Lifetime Value
+        </h3>
+
+        {/* LTV Summary Cards */}
+        <div className="mb-5 grid grid-cols-3 gap-4">
+          <div className="rounded-md border border-border bg-[#0A0A0B] p-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Overall LTV</p>
+            <p className="mt-1 font-mono text-2xl font-semibold text-zinc-100">
+              {formatCurrency(shopifyLTV.overall, 2)}
+            </p>
+          </div>
+          <div className="rounded-md border border-border bg-[#0A0A0B] p-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">New (30d) LTV</p>
+            <p className="mt-1 font-mono text-2xl font-semibold text-zinc-100">
+              {formatCurrency(shopifyLTV.new30d, 2)}
+            </p>
+          </div>
+          <div className="rounded-md border border-border bg-[#0A0A0B] p-4">
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Returning LTV</p>
+            <p className="mt-1 font-mono text-2xl font-semibold text-zinc-100">
+              {formatCurrency(shopifyLTV.returning, 2)}
+            </p>
+          </div>
+        </div>
+
+        {/* LTV by Channel + Repeat Purchase Stats */}
+        <div className="grid grid-cols-2 gap-4">
+          {/* LTV by Channel */}
+          <div>
+            <h4 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+              LTV by Channel
+            </h4>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
-                  <th className="px-2 py-2">#</th>
-                  <th className="px-2 py-2">Product</th>
-                  <th className="px-2 py-2 text-right">Revenue</th>
-                  <th className="px-2 py-2 text-right">Units</th>
-                  <th className="px-2 py-2 text-right">AOV</th>
-                  <th className="px-2 py-2 text-right">Change</th>
+                  <th className="px-3 py-2">Channel</th>
+                  <th className="px-3 py-2 text-right">LTV</th>
+                  <th className="px-3 py-2 text-right">LTV:CAC</th>
                 </tr>
               </thead>
               <tbody>
-                {topProducts.map((p, i) => {
-                  const positive = p.change >= 0;
-                  return (
-                    <tr
-                      key={p.sku}
-                      className="border-b border-border/50 transition-colors hover:bg-white/[0.02]"
-                    >
-                      <td className="px-2 py-2 font-mono text-xs text-zinc-500">
-                        {i + 1}
-                      </td>
-                      <td className="px-2 py-2 font-medium text-zinc-200">{p.name}</td>
-                      <td className="px-2 py-2 text-right font-mono text-zinc-300">
-                        {formatCurrency(p.revenue)}
-                      </td>
-                      <td className="px-2 py-2 text-right font-mono text-zinc-300">
-                        {p.units.toLocaleString()}
-                      </td>
-                      <td className="px-2 py-2 text-right font-mono text-zinc-300">
-                        {formatCurrency(p.aov, 2)}
-                      </td>
-                      <td
-                        className={clsx(
-                          "px-2 py-2 text-right font-mono text-xs",
-                          positive ? "text-emerald-400" : "text-red-400"
-                        )}
-                      >
-                        {positive ? "+" : ""}
-                        {p.change}%
-                      </td>
-                    </tr>
-                  );
-                })}
+                {shopifyLTV.byChannel.map((ch) => (
+                  <tr
+                    key={ch.channel}
+                    className="border-b border-border/50 transition-colors hover:bg-white/[0.02]"
+                  >
+                    <td className="px-3 py-2 font-medium text-zinc-200">
+                      {ch.channel}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                      {formatCurrency(ch.ltv, 2)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                      {ch.cacRatio === Infinity ? (
+                        <span className="text-emerald-400">&infin;</span>
+                      ) : (
+                        `${ch.cacRatio.toFixed(1)}x`
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
+
+          {/* Repeat Purchase Stats */}
+          <div>
+            <h4 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+              Repeat Purchase Stats
+            </h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-md border border-border bg-[#0A0A0B] p-3">
+                <p className="text-xs text-zinc-500">Repeat Rate</p>
+                <p className="mt-1 font-mono text-lg font-semibold text-zinc-100">
+                  {formatPercent(shopifyRepeatData.repeatRate)}
+                </p>
+              </div>
+              <div className="rounded-md border border-border bg-[#0A0A0B] p-3">
+                <p className="text-xs text-zinc-500">Avg Time Between</p>
+                <p className="mt-1 font-mono text-lg font-semibold text-zinc-100">
+                  {shopifyRepeatData.avgTimeBetween}d
+                </p>
+              </div>
+              <div className="rounded-md border border-border bg-[#0A0A0B] p-3">
+                <p className="text-xs text-zinc-500">Avg Orders / Customer</p>
+                <p className="mt-1 font-mono text-lg font-semibold text-zinc-100">
+                  {shopifyRepeatData.avgOrdersPerCustomer.toFixed(2)}
+                </p>
+              </div>
+              <div className="rounded-md border border-border bg-[#0A0A0B] p-3">
+                <p className="text-xs text-zinc-500">Repeat Revenue %</p>
+                <p className="mt-1 font-mono text-lg font-semibold text-zinc-100">
+                  {formatPercent(shopifyRepeatData.repeatRevenuePct)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Cohort Retention ── */}
+      <div className="rounded-lg border border-border bg-surface p-5">
+        <h3 className="mb-4 text-sm font-medium text-zinc-400">
+          Cohort Retention
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
+                <th className="px-3 py-2">Cohort</th>
+                <th className="px-3 py-2 text-right">Size</th>
+                <th className="px-3 py-2 text-center">M0</th>
+                <th className="px-3 py-2 text-center">M1</th>
+                <th className="px-3 py-2 text-center">M2</th>
+                <th className="px-3 py-2 text-center">M3</th>
+                <th className="px-3 py-2 text-center">M4</th>
+                <th className="px-3 py-2 text-center">M5</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cohortData.map((row) => {
+                const months = [row.m0, row.m1, row.m2, row.m3, row.m4, row.m5];
+                return (
+                  <tr
+                    key={row.cohort}
+                    className="border-b border-border/50"
+                  >
+                    <td className="px-3 py-2 font-medium text-zinc-200">
+                      {row.cohort}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                      {row.size.toLocaleString()}
+                    </td>
+                    {months.map((val, mi) => {
+                      if (val === null) {
+                        return (
+                          <td
+                            key={mi}
+                            className="px-3 py-2 text-center"
+                          >
+                            <span className="inline-block rounded px-2 py-1 font-mono text-xs bg-zinc-800 text-zinc-600">
+                              —
+                            </span>
+                          </td>
+                        );
+                      }
+
+                      // Heat map: higher retention = more green, lower = more red
+                      // M0 is always 100%, so just show it neutral/bright
+                      let bgColor: string;
+                      let textColor: string;
+                      if (val === 100) {
+                        bgColor = "rgba(150, 191, 72, 0.2)";
+                        textColor = "#96BF48";
+                      } else if (val >= 30) {
+                        bgColor = "rgba(34, 197, 94, 0.2)";
+                        textColor = "#22C55E";
+                      } else if (val >= 20) {
+                        bgColor = "rgba(34, 197, 94, 0.12)";
+                        textColor = "#4ADE80";
+                      } else if (val >= 15) {
+                        bgColor = "rgba(250, 204, 21, 0.12)";
+                        textColor = "#FACC15";
+                      } else {
+                        bgColor = "rgba(239, 68, 68, 0.12)";
+                        textColor = "#F87171";
+                      }
+
+                      return (
+                        <td key={mi} className="px-3 py-2 text-center">
+                          <span
+                            className="inline-block rounded px-2 py-1 font-mono text-xs font-medium"
+                            style={{ backgroundColor: bgColor, color: textColor }}
+                          >
+                            {formatPercent(val)}
+                          </span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -278,26 +657,20 @@ export default function ShopifyPage() {
             <CartesianGrid stroke="#1F1F23" strokeDasharray="none" vertical={false} />
             <XAxis
               dataKey="hour"
-              tick={{ fill: "#71717A", fontSize: 11 }}
+              tick={axisTickSmall}
               axisLine={{ stroke: "#1F1F23" }}
               tickLine={false}
               interval={2}
             />
             <YAxis
-              tick={{ fill: "#71717A", fontSize: 11 }}
+              tick={axisTickSmall}
               axisLine={false}
               tickLine={false}
               width={30}
             />
             <Tooltip
-              contentStyle={{
-                backgroundColor: "#18181B",
-                border: "1px solid #27272A",
-                borderRadius: 8,
-                color: "#F4F4F5",
-                fontSize: 12,
-              }}
-              labelStyle={{ color: "#71717A", marginBottom: 4 }}
+              contentStyle={{ ...tooltipStyle, fontSize: 12 }}
+              labelStyle={tooltipLabelStyle}
               formatter={((value: number) => [value, "Orders"]) as never}
             />
             <Bar

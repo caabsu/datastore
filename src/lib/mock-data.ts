@@ -500,3 +500,157 @@ export const cohortData = [
   { cohort: 'Feb 2026', size: 390, m0: 100, m1: 34, m2: null, m3: null, m4: null, m5: null },
   { cohort: 'Mar 2026', size: 180, m0: 100, m1: null, m2: null, m3: null, m4: null, m5: null },
 ];
+
+// ── ENHANCED DASHBOARD DATA ──
+
+// Daily blended ROAS trend
+export const dailyROASTrend = daily28.map((d, i) => ({
+  date: d.date,
+  roas: +(3.2 + Math.sin(i / 4) * 0.5 + i * 0.02 + (Math.random() - 0.5) * 0.3).toFixed(2),
+  target: 3.0,
+}));
+
+// Enhanced channel mix with CM, CPA, conv rate, share
+export const channelPerformance = [
+  { channel: 'meta', label: 'Meta Ads', revenue: 34020, spend: 8420, roas: 4.04, roasChange: 5, orders: 186, cm: 8440, cmPct: 24.8, cpa: 45.27, convRate: 4.2, share: 54.3, color: '#1877F2' },
+  { channel: 'google', label: 'Google Ads', revenue: 14030, spend: 4450, roas: 3.15, roasChange: -2, orders: 89, cm: 3420, cmPct: 24.4, cpa: 50.0, convRate: 3.1, share: 22.4, color: '#4285F4' },
+  { channel: 'organic', label: 'Organic', revenue: 8690, spend: 0, roas: Infinity, roasChange: 12, orders: 62, cm: 5650, cmPct: 65.0, cpa: 0, convRate: 5.8, share: 13.9, color: '#8B5CF6' },
+  { channel: 'email', label: 'Email / SMS', revenue: 3860, spend: 0, roas: Infinity, roasChange: 8, orders: 28, cm: 2510, cmPct: 65.0, cpa: 0, convRate: 8.2, share: 6.2, color: '#F59E0B' },
+  { channel: 'direct', label: 'Direct', revenue: 1930, spend: 0, roas: Infinity, roasChange: -1, orders: 14, cm: 1250, cmPct: 64.8, cpa: 0, convRate: 4.5, share: 3.1, color: '#6B7280' },
+];
+
+// Customer acquisition summary
+export const customerAcquisition = {
+  new: { count: 131, revenue: 20400, cac: 38.40, pctOfTotal: 42.3, change: -3.2 },
+  returning: { count: 181, revenue: 27830, aov: 153.76, pctOfTotal: 57.7, change: 3.2 },
+  repeatRate: 28.4,
+  ltv: 312.50,
+  ltvCacRatio: 8.1,
+};
+
+// Top performers
+export const topPerformers = {
+  ad: { name: 'UGC Spring Review', channel: 'Meta', roas: 4.8, cm: 1647, hookRate: 38.2 },
+  product: { name: 'Leather Tote', revenue: 8420, units: 142, change: 15 },
+  campaign: { name: 'Prospecting CBO', channel: 'Meta', roas: 4.2, cm: 4230, purchases: 82 },
+};
+
+// Daily spend breakdown by channel
+export const dailySpendByChannel = daily28.map((d, i) => ({
+  date: d.date,
+  meta: Math.round(280 + Math.sin(i / 3) * 40 + i * 2 + (Math.random() - 0.5) * 30),
+  google: Math.round(150 + Math.sin(i / 3) * 25 + i * 1 + (Math.random() - 0.5) * 20),
+}));
+
+// ── META ENHANCED DATA ──
+
+// Meta daily performance trend
+export const metaDailyTrend = daily28.map((d, i) => ({
+  date: d.date,
+  spend: Math.round(280 + Math.sin(i / 3) * 40 + i * 2 + (Math.random() - 0.5) * 30),
+  revenue: Math.round(1100 + Math.sin(i / 3) * 200 + i * 12 + (Math.random() - 0.5) * 120),
+  roas: +(3.6 + Math.sin(i / 4) * 0.6 + i * 0.015 + (Math.random() - 0.5) * 0.4).toFixed(2),
+  cpa: +(48 - Math.sin(i / 4) * 5 - i * 0.1 + (Math.random() - 0.5) * 4).toFixed(2),
+}));
+
+// Meta creative type breakdown
+export const metaCreativeBreakdown = [
+  { type: 'Video', count: 4, spend: 5980, revenue: 12708, roas: 2.13, purchases: 102, hookRate: 28.4, cpa: 58.63, cm: 2525, color: '#1877F2' },
+  { type: 'Carousel', count: 2, spend: 3220, revenue: 8964, roas: 2.78, purchases: 58, hookRate: null, cpa: 55.52, cm: 3153, color: '#60A5FA' },
+  { type: 'Image', count: 2, spend: 1200, revenue: 3584, roas: 2.99, purchases: 28, hookRate: null, cpa: 42.86, cm: 890, color: '#93C5FD' },
+];
+
+// Meta audience breakdown
+export const metaAudienceBreakdown = [
+  { audience: 'Broad 18-45', spend: 3940, revenue: 9632, roas: 2.44, purchases: 60, reachCPM: 16.80, incrReach: 72, color: '#1877F2' },
+  { audience: 'Lookalike 1%', spend: 1900, revenue: 2156, roas: 1.14, purchases: 22, reachCPM: 28.60, incrReach: 45, color: '#3B82F6' },
+  { audience: 'Interest Stack', spend: 1200, revenue: 3888, roas: 3.24, purchases: 24, reachCPM: 12.80, incrReach: 82, color: '#60A5FA' },
+  { audience: 'Website Visitors 30d', spend: 1200, revenue: 3584, roas: 2.99, purchases: 28, reachCPM: 8.20, incrReach: null, color: '#93C5FD' },
+  { audience: 'ATC 7d', spend: 1380, revenue: 4260, roas: 3.09, purchases: 30, reachCPM: 7.90, incrReach: null, color: '#BFDBFE' },
+  { audience: 'Broad 25-55', spend: 1680, revenue: 3484, roas: 2.07, purchases: 26, reachCPM: 21.30, incrReach: 58, color: '#DBEAFE' },
+];
+
+// Meta funnel aggregated
+export const metaFunnel = [
+  { stage: 'Impressions', value: 842000, rate: null },
+  { stage: 'Reach', value: 624000, rate: 74.1 },
+  { stage: 'Link Clicks', value: 4210, rate: 0.50 },
+  { stage: 'LP Views', value: 3680, rate: 87.4 },
+  { stage: 'Add to Cart', value: 412, rate: 11.2 },
+  { stage: 'Purchases', value: 186, rate: 45.1 },
+];
+
+// ── GOOGLE ENHANCED DATA ──
+
+// Google daily performance trend
+export const googleDailyTrend = daily28.map((d, i) => ({
+  date: d.date,
+  spend: Math.round(150 + Math.sin(i / 3) * 25 + i * 1 + (Math.random() - 0.5) * 20),
+  revenue: Math.round(480 + Math.sin(i / 3) * 80 + i * 6 + (Math.random() - 0.5) * 60),
+  roas: +(3.0 + Math.sin(i / 4) * 0.4 + i * 0.01 + (Math.random() - 0.5) * 0.3).toFixed(2),
+}));
+
+// Google device breakdown
+export const googleDeviceBreakdown = [
+  { device: 'Mobile', spend: 2450, revenue: 7280, conversions: 48, cpa: 51.04, ctr: 3.2, share: 55.1, color: '#4285F4' },
+  { device: 'Desktop', spend: 1560, revenue: 5180, conversions: 32, cpa: 48.75, ctr: 4.8, share: 35.1, color: '#34A853' },
+  { device: 'Tablet', spend: 440, revenue: 1570, conversions: 9, cpa: 48.89, ctr: 3.6, share: 9.9, color: '#FBBC05' },
+];
+
+// Google keyword categories
+export const googleKeywordCategories = [
+  { category: 'Brand', spend: 680, revenue: 3450, roas: 5.07, conversions: 24, cpa: 28.33, impressionShare: 92 },
+  { category: 'Product', spend: 1420, revenue: 4210, roas: 2.96, conversions: 22, cpa: 64.55, impressionShare: 38 },
+  { category: 'Generic', spend: 620, revenue: 1180, roas: 1.90, conversions: 8, cpa: 77.50, impressionShare: 12 },
+  { category: 'Competitor', spend: 380, revenue: 740, roas: 1.95, conversions: 5, cpa: 76.00, impressionShare: 22 },
+];
+
+// ── SHOPIFY ENHANCED DATA ──
+
+// Shopify conversion funnel
+export const shopifyFunnel = [
+  { stage: 'Sessions', value: 18420, rate: null },
+  { stage: 'Product Views', value: 9840, rate: 53.4 },
+  { stage: 'Add to Cart', value: 1476, rate: 15.0 },
+  { stage: 'Checkout', value: 498, rate: 33.7 },
+  { stage: 'Purchase', value: 312, rate: 62.7 },
+];
+
+// Shopify repeat purchase data
+export const shopifyRepeatData = {
+  repeatRate: 28.4,
+  avgTimeBetween: 42,
+  avgOrdersPerCustomer: 1.68,
+  repeatRevenuePct: 57.7,
+};
+
+// Shopify daily orders by type
+export const shopifyDailyOrders = daily28.map((d, i) => ({
+  date: d.date,
+  newOrders: Math.round(5 + Math.sin(i / 4) * 2 + i * 0.05 + (Math.random() - 0.5) * 1.5),
+  repeatOrders: Math.round(7 + Math.sin(i / 4) * 2.5 + i * 0.08 + (Math.random() - 0.5) * 2),
+}));
+
+// Shopify product category breakdown
+export const shopifyCategories = [
+  { category: 'Bags', revenue: 11630, units: 184, aov: 63.21, pct: 24.1, change: 12 },
+  { category: 'Wallets', revenue: 9100, units: 366, aov: 24.86, pct: 18.9, change: 6 },
+  { category: 'Travel', revenue: 8780, units: 257, aov: 34.16, pct: 18.2, change: -1 },
+  { category: 'Phone Cases', revenue: 4120, units: 256, aov: 16.09, pct: 8.5, change: 22 },
+  { category: 'Accessories', revenue: 6340, units: 513, aov: 12.36, pct: 13.1, change: 3 },
+  { category: 'Belts', revenue: 4890, units: 196, aov: 24.95, pct: 10.1, change: -2 },
+  { category: 'Other', revenue: 3370, units: 168, aov: 20.06, pct: 7.0, change: 1 },
+];
+
+// Shopify LTV data
+export const shopifyLTV = {
+  overall: 312.50,
+  new30d: 154.58,
+  returning: 486.20,
+  byChannel: [
+    { channel: 'Meta', ltv: 285.40, cacRatio: 6.3 },
+    { channel: 'Google', ltv: 342.80, cacRatio: 6.9 },
+    { channel: 'Organic', ltv: 398.60, cacRatio: Infinity },
+    { channel: 'Email', ltv: 520.10, cacRatio: Infinity },
+  ],
+};
