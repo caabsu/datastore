@@ -295,22 +295,270 @@ export const metaAds: MetaAd[] = [
   },
 ];
 
-export const metaCampaigns = [
-  {
-    name: 'Prospecting CBO', type: 'CBO', spend: 5840, reachCPM: 16.20, incrReachPct: 68, incrROAS: 3.4,
-    cm: 4230, roas: 4.2, purchases: 82, revenue: 14980,
-    ads: metaAds.filter(a => a.campaignName === 'Prospecting CBO'),
-  },
-  {
-    name: 'Retargeting', type: 'ABO', spend: 2580, reachCPM: 8.20, incrReachPct: null, incrROAS: null,
-    cm: 1940, roas: 6.1, purchases: 58, revenue: 7844,
-    ads: metaAds.filter(a => a.campaignName === 'Retargeting'),
-  },
-  {
-    name: 'Prospecting ABO', type: 'ABO', spend: 1680, reachCPM: 21.30, incrReachPct: 58, incrROAS: 2.4,
-    cm: 680, roas: 3.2, purchases: 26, revenue: 3484,
-    ads: metaAds.filter(a => a.campaignName === 'Prospecting ABO'),
-  },
+// ── META AD SET LEVEL DATA ──
+export interface MetaAdSet {
+  name: string;
+  campaignName: string;
+  status: 'Active' | 'Paused' | 'Learning';
+  // Targeting
+  targeting: string;
+  audienceType: 'Broad' | 'Lookalike' | 'Interest' | 'Custom' | 'Retargeting';
+  ageRange: string;
+  gender: 'All' | 'Female' | 'Male';
+  placements: string;
+  // Budget & Schedule
+  budgetType: 'CBO Managed' | 'Daily' | 'Lifetime';
+  dailyBudget: number | null; // null for CBO-managed
+  startDate: string;
+  // Delivery
+  reach: number;
+  impressions: number;
+  frequency: number;
+  reachCPM: number;
+  incrReachPct: number | null;
+  // Aggregated from ads
+  spend: number;
+  revenue: number;
+  roas: number;
+  cm: number;
+  cmPct: number;
+  purchases: number;
+  cpa: number;
+  cpc: number;
+  ctr: number;
+  cpm: number;
+  conversionRate: number;
+  // Trends
+  spendTrend: number;
+  roasTrend: number;
+  cpaTrend: number;
+  reachCPMTrend: number;
+  // Ads
+  ads: MetaAd[];
+}
+
+function buildAdSet(
+  name: string,
+  campaignName: string,
+  config: {
+    targeting: string;
+    audienceType: MetaAdSet['audienceType'];
+    ageRange: string;
+    gender: MetaAdSet['gender'];
+    placements: string;
+    budgetType: MetaAdSet['budgetType'];
+    dailyBudget: number | null;
+    startDate: string;
+    reach: number;
+    impressions: number;
+    incrReachPct: number | null;
+    spendTrend: number;
+    roasTrend: number;
+    cpaTrend: number;
+    reachCPMTrend: number;
+  }
+): MetaAdSet {
+  const ads = metaAds.filter(a => a.campaignName === campaignName && a.adsetName === name);
+  const spend = ads.reduce((s, a) => s + a.spend, 0);
+  const revenue = ads.reduce((s, a) => s + a.revenue, 0);
+  const purchases = ads.reduce((s, a) => s + a.purchases, 0);
+  const cm = ads.reduce((s, a) => s + a.contributionMargin, 0);
+  const clicks = spend > 0 ? Math.round(ads.reduce((s, a) => s + (a.spend / a.cpc), 0)) : 0;
+  return {
+    name,
+    campaignName,
+    status: ads.some(a => a.status === 'Active') ? 'Active' : 'Paused',
+    ...config,
+    reach: config.reach,
+    impressions: config.impressions,
+    frequency: config.reach > 0 ? +(config.impressions / config.reach).toFixed(1) : 0,
+    reachCPM: config.reach > 0 ? +((spend / config.reach) * 1000).toFixed(2) : 0,
+    spend,
+    revenue,
+    roas: spend > 0 ? +(revenue / spend).toFixed(2) : 0,
+    cm,
+    cmPct: revenue > 0 ? +((cm / revenue) * 100).toFixed(1) : 0,
+    purchases,
+    cpa: purchases > 0 ? +(spend / purchases).toFixed(2) : 0,
+    cpc: clicks > 0 ? +(spend / clicks).toFixed(2) : 0,
+    ctr: config.impressions > 0 ? +((clicks / config.impressions) * 100).toFixed(2) : 0,
+    cpm: config.impressions > 0 ? +((spend / config.impressions) * 1000).toFixed(2) : 0,
+    conversionRate: clicks > 0 ? +((purchases / clicks) * 100).toFixed(2) : 0,
+    ads,
+  };
+}
+
+export const metaAdSets: MetaAdSet[] = [
+  buildAdSet('Broad 18-45', 'Prospecting CBO', {
+    targeting: 'Women 18-45, US, Broad targeting',
+    audienceType: 'Broad',
+    ageRange: '18-45',
+    gender: 'Female',
+    placements: 'Feed, Stories, Reels',
+    budgetType: 'CBO Managed',
+    dailyBudget: null,
+    startDate: 'Feb 25, 2026',
+    reach: 342000,
+    impressions: 512000,
+    incrReachPct: 72,
+    spendTrend: 8,
+    roasTrend: -2,
+    cpaTrend: 5,
+    reachCPMTrend: 12,
+  }),
+  buildAdSet('Lookalike 1%', 'Prospecting CBO', {
+    targeting: '1% LAL from Purchase Seed, US',
+    audienceType: 'Lookalike',
+    ageRange: '18-65',
+    gender: 'All',
+    placements: 'Feed, Stories, Reels',
+    budgetType: 'CBO Managed',
+    dailyBudget: null,
+    startDate: 'Feb 11, 2026',
+    reach: 66400,
+    impressions: 252000,
+    incrReachPct: 45,
+    spendTrend: -12,
+    roasTrend: -35,
+    cpaTrend: 45,
+    reachCPMTrend: 65,
+  }),
+  buildAdSet('Interest Stack', 'Prospecting CBO', {
+    targeting: 'Fashion, Leather Goods, Gift Shoppers',
+    audienceType: 'Interest',
+    ageRange: '22-50',
+    gender: 'All',
+    placements: 'Feed, Stories, Reels, Explore',
+    budgetType: 'CBO Managed',
+    dailyBudget: null,
+    startDate: 'Mar 6, 2026',
+    reach: 93800,
+    impressions: 93800,
+    incrReachPct: 82,
+    spendTrend: 20,
+    roasTrend: 10,
+    cpaTrend: -6,
+    reachCPMTrend: -8,
+  }),
+  buildAdSet('Website Visitors 30d', 'Retargeting', {
+    targeting: 'Website Visitors, Last 30 Days',
+    audienceType: 'Retargeting',
+    ageRange: '18-65',
+    gender: 'All',
+    placements: 'Feed, Stories, Right Column',
+    budgetType: 'Daily',
+    dailyBudget: 60,
+    startDate: 'Feb 18, 2026',
+    reach: 14600,
+    impressions: 96800,
+    incrReachPct: null,
+    spendTrend: 2,
+    roasTrend: 0,
+    cpaTrend: 0,
+    reachCPMTrend: 3,
+  }),
+  buildAdSet('ATC 7d', 'Retargeting', {
+    targeting: 'Add to Cart, Last 7 Days',
+    audienceType: 'Retargeting',
+    ageRange: '18-65',
+    gender: 'All',
+    placements: 'Feed, Stories',
+    budgetType: 'Daily',
+    dailyBudget: 70,
+    startDate: 'Feb 4, 2026',
+    reach: 8200,
+    impressions: 127800,
+    incrReachPct: null,
+    spendTrend: 4,
+    roasTrend: 3,
+    cpaTrend: -2,
+    reachCPMTrend: 5,
+  }),
+  buildAdSet('Broad 25-55', 'Prospecting ABO', {
+    targeting: 'Adults 25-55, US, Broad targeting',
+    audienceType: 'Broad',
+    ageRange: '25-55',
+    gender: 'All',
+    placements: 'Feed, Stories, Reels',
+    budgetType: 'Daily',
+    dailyBudget: 95,
+    startDate: 'Feb 21, 2026',
+    reach: 78900,
+    impressions: 189400,
+    incrReachPct: 58,
+    spendTrend: -3,
+    roasTrend: -8,
+    cpaTrend: 12,
+    reachCPMTrend: 18,
+  }),
+];
+
+// ── META CAMPAIGNS (derived from ad sets for consistency) ──
+export interface MetaCampaign {
+  name: string;
+  type: 'CBO' | 'ABO';
+  objective: string;
+  status: 'Active' | 'Paused';
+  dailyBudget: number | null;
+  startDate: string;
+  // Aggregated
+  spend: number;
+  revenue: number;
+  roas: number;
+  cm: number;
+  cmPct: number;
+  purchases: number;
+  cpa: number;
+  reachCPM: number;
+  incrReachPct: number | null;
+  incrROAS: number | null;
+  // Hierarchy
+  adSets: MetaAdSet[];
+  ads: MetaAd[];
+}
+
+function buildCampaign(
+  name: string,
+  type: 'CBO' | 'ABO',
+  objective: string,
+  dailyBudget: number | null,
+  startDate: string,
+  incrReachPct: number | null,
+  incrROAS: number | null,
+): MetaCampaign {
+  const adSets = metaAdSets.filter(s => s.campaignName === name);
+  const ads = metaAds.filter(a => a.campaignName === name);
+  const spend = adSets.reduce((s, a) => s + a.spend, 0);
+  const revenue = adSets.reduce((s, a) => s + a.revenue, 0);
+  const purchases = adSets.reduce((s, a) => s + a.purchases, 0);
+  const cm = adSets.reduce((s, a) => s + a.cm, 0);
+  const totalReach = adSets.reduce((s, a) => s + a.reach, 0);
+  return {
+    name,
+    type,
+    objective,
+    status: adSets.some(s => s.status === 'Active') ? 'Active' : 'Paused',
+    dailyBudget,
+    startDate,
+    spend,
+    revenue,
+    roas: spend > 0 ? +(revenue / spend).toFixed(2) : 0,
+    cm,
+    cmPct: revenue > 0 ? +((cm / revenue) * 100).toFixed(1) : 0,
+    purchases,
+    cpa: purchases > 0 ? +(spend / purchases).toFixed(2) : 0,
+    reachCPM: totalReach > 0 ? +((spend / totalReach) * 1000).toFixed(2) : 0,
+    incrReachPct,
+    incrROAS,
+    adSets,
+    ads,
+  };
+}
+
+export const metaCampaigns: MetaCampaign[] = [
+  buildCampaign('Prospecting CBO', 'CBO', 'Conversions — Purchase', 420, 'Feb 11, 2026', 68, 3.4),
+  buildCampaign('Retargeting', 'ABO', 'Conversions — Purchase', null, 'Feb 4, 2026', null, null),
+  buildCampaign('Prospecting ABO', 'ABO', 'Conversions — Purchase', 95, 'Feb 21, 2026', 58, 2.4),
 ];
 
 // Creative Analysis Matrix
