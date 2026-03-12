@@ -29,6 +29,25 @@ import {
   Bar,
 } from "recharts";
 
+const METRIC_TOOLTIPS: Record<string, string> = {
+  netRevenue:
+    "Total revenue after refunds and returns. Excludes tax and shipping unless configured in Settings. Formula: Gross Revenue - Refunds.",
+  adSpend:
+    "Total advertising spend across all paid channels (Meta Ads + Google Ads). Does not include organic, email, or influencer costs.",
+  blendedROAS:
+    "Marketing Efficiency Ratio (MER). Total revenue divided by total ad spend across all channels. Unlike channel-level ROAS, this captures the full business picture including organic lift from paid awareness. Formula: Net Revenue / Total Ad Spend.",
+  contributionMargin:
+    "Revenue remaining after all variable costs: COGS, fulfillment, payment processing, and ad spend. This is the true profit from operations before fixed costs. Formula: Net Revenue - COGS - Fulfillment - Processing - Ad Spend. The percentage shows CM as a share of Net Revenue.",
+  orders:
+    "Total completed orders in the selected period. Excludes cancelled and fully refunded orders. Sourced from Shopify order data.",
+  aov:
+    "Average Order Value. Revenue generated per order. Formula: Net Revenue / Total Orders. A higher AOV means more revenue per transaction — often driven by bundling, upsells, or price increases.",
+  newCustomerCAC:
+    "Customer Acquisition Cost for first-time buyers. Total ad spend allocated to new customers divided by the number of new customers acquired. Formula: (Ad Spend x New Customer %) / New Customers. Lower is better — trend is inverted so a decrease shows green.",
+  newCustomerPct:
+    "Percentage of total orders placed by first-time buyers. Formula: New Customer Orders / Total Orders. Indicates the balance between acquisition (new) and retention (returning). A healthy DTC brand typically targets 35-50%.",
+};
+
 export default function DashboardPage() {
   const maxRevenue = Math.max(...channelPerformance.map((c) => c.revenue));
   const totalRevenue = channelPerformance.reduce((s, c) => s + c.revenue, 0);
@@ -45,18 +64,21 @@ export default function DashboardPage() {
           value={formatCurrency(overviewKPIs.netRevenue.value)}
           change={overviewKPIs.netRevenue.change}
           sparkline={overviewKPIs.netRevenue.sparkline}
+          tooltip={METRIC_TOOLTIPS.netRevenue}
         />
         <KPICard
           title="Ad Spend"
           value={formatCurrency(overviewKPIs.adSpend.value)}
           change={overviewKPIs.adSpend.change}
           sparkline={overviewKPIs.adSpend.sparkline}
+          tooltip={METRIC_TOOLTIPS.adSpend}
         />
         <KPICard
           title="Blended ROAS (MER)"
           value={formatMultiplier(overviewKPIs.blendedROAS.value)}
           change={overviewKPIs.blendedROAS.change}
           sparkline={overviewKPIs.blendedROAS.sparkline}
+          tooltip={METRIC_TOOLTIPS.blendedROAS}
         />
         <KPICard
           title="Contribution Margin"
@@ -64,6 +86,7 @@ export default function DashboardPage() {
           change={overviewKPIs.contributionMargin.change}
           sparkline={overviewKPIs.contributionMargin.sparkline}
           subtitle={`${overviewKPIs.contributionMargin.pct}%`}
+          tooltip={METRIC_TOOLTIPS.contributionMargin}
         />
       </div>
 
@@ -74,12 +97,14 @@ export default function DashboardPage() {
           value={overviewKPIs.orders.value.toString()}
           change={overviewKPIs.orders.change}
           sparkline={overviewKPIs.orders.sparkline}
+          tooltip={METRIC_TOOLTIPS.orders}
         />
         <KPICard
           title="AOV"
           value={formatCurrency(overviewKPIs.aov.value, 2)}
           change={overviewKPIs.aov.change}
           sparkline={overviewKPIs.aov.sparkline}
+          tooltip={METRIC_TOOLTIPS.aov}
         />
         <KPICard
           title="New Customer CAC"
@@ -87,12 +112,14 @@ export default function DashboardPage() {
           change={overviewKPIs.newCustomerCAC.change}
           invertTrend
           sparkline={overviewKPIs.newCustomerCAC.sparkline}
+          tooltip={METRIC_TOOLTIPS.newCustomerCAC}
         />
         <KPICard
           title="New Customer %"
           value={formatPercent(overviewKPIs.newCustomerPct.value)}
           change={overviewKPIs.newCustomerPct.change}
           sparkline={overviewKPIs.newCustomerPct.sparkline}
+          tooltip={METRIC_TOOLTIPS.newCustomerPct}
         />
       </div>
 

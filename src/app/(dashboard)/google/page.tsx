@@ -31,6 +31,21 @@ const TOOLTIP_STYLE = {
 
 const GOOGLE_BLUE = "#4285F4";
 
+const GOOGLE_TOOLTIPS: Record<string, string> = {
+  spend:
+    "Total amount spent on Google Ads across Search, Shopping, and Performance Max campaigns. Sourced from Google Ads API reporting.",
+  revenue:
+    "Total conversion value attributed to Google Ads. Uses Google's last-click attribution model by default. Includes purchases tracked via Google Ads conversion tag.",
+  roas:
+    "Return on Ad Spend. Total Google Ads conversion value divided by total Google Ads spend. Formula: Google Revenue / Google Spend.",
+  conversions:
+    "Total purchase conversions attributed to Google Ads. Counted using the Google Ads conversion tracking pixel or imported from Google Analytics.",
+  cpa:
+    "Cost Per Acquisition. Average spend to generate one conversion. Formula: Google Spend / Conversions. Lower is better — trend is inverted so a decrease shows green.",
+  ctr:
+    "Click-Through Rate. Percentage of impressions that resulted in a click. Formula: Clicks / Impressions. Higher CTR indicates more relevant ad copy and targeting.",
+};
+
 export default function GoogleAdsPage() {
   const totalPmaxSpend = googlePmaxBreakdown.reduce((s, c) => s + c.spend, 0);
   const maxDeviceShare = Math.max(
@@ -56,24 +71,28 @@ export default function GoogleAdsPage() {
           value={formatCurrency(googleKPIs.spend.value)}
           change={googleKPIs.spend.change}
           sparkline={googleKPIs.spend.sparkline}
+          tooltip={GOOGLE_TOOLTIPS.spend}
         />
         <KPICard
           title="Revenue"
           value={formatCurrency(googleKPIs.revenue.value)}
           change={googleKPIs.revenue.change}
           sparkline={googleKPIs.revenue.sparkline}
+          tooltip={GOOGLE_TOOLTIPS.revenue}
         />
         <KPICard
           title="ROAS"
           value={formatMultiplier(googleKPIs.roas.value)}
           change={googleKPIs.roas.change}
           sparkline={googleKPIs.roas.sparkline}
+          tooltip={GOOGLE_TOOLTIPS.roas}
         />
         <KPICard
           title="Conversions"
           value={googleKPIs.conversions.value.toString()}
           change={googleKPIs.conversions.change}
           sparkline={googleKPIs.conversions.sparkline}
+          tooltip={GOOGLE_TOOLTIPS.conversions}
         />
         <KPICard
           title="CPA"
@@ -81,12 +100,14 @@ export default function GoogleAdsPage() {
           change={googleKPIs.cpa.change}
           invertTrend
           sparkline={googleKPIs.cpa.sparkline}
+          tooltip={GOOGLE_TOOLTIPS.cpa}
         />
         <KPICard
           title="CTR"
           value={formatPercent(googleKPIs.ctr.value)}
           change={googleKPIs.ctr.change}
           sparkline={googleKPIs.ctr.sparkline}
+          tooltip={GOOGLE_TOOLTIPS.ctr}
         />
       </div>
 

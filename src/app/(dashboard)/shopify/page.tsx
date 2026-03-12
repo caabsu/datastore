@@ -49,6 +49,19 @@ const tooltipLabelStyle = { color: "#71717A", marginBottom: 4 };
 const axisTickStyle = { fill: "#71717A", fontSize: 12 };
 const axisTickSmall = { fill: "#71717A", fontSize: 11 };
 
+const SHOPIFY_TOOLTIPS: Record<string, string> = {
+  netRevenue:
+    "Total Shopify revenue after refunds and returns. Excludes tax and shipping unless configured. Formula: Gross Revenue - Refunds - Discounts. Sourced from Shopify Orders API.",
+  orders:
+    "Total completed orders in the selected period. Excludes cancelled and fully refunded orders. Includes both online and POS orders if applicable.",
+  aov:
+    "Average Order Value. Net revenue divided by total orders. Formula: Net Revenue / Orders. Influenced by bundling, upsells, and discount strategy.",
+  unitsPerOrder:
+    "Average number of line items per order. Higher values indicate successful cross-selling and bundling. Formula: Total Units Sold / Total Orders.",
+  refundRate:
+    "Percentage of orders that were fully or partially refunded. Formula: Refunded Orders / Total Orders. Lower is better — trend is inverted so a decrease shows green. Industry average for DTC is 5-8%.",
+};
+
 export default function ShopifyPage() {
   const maxFunnelValue = shopifyFunnel[0].value;
 
@@ -61,24 +74,28 @@ export default function ShopifyPage() {
           value={formatCurrency(shopifyKPIs.netRevenue.value)}
           change={shopifyKPIs.netRevenue.change}
           sparkline={shopifyKPIs.netRevenue.sparkline}
+          tooltip={SHOPIFY_TOOLTIPS.netRevenue}
         />
         <KPICard
           title="Orders"
           value={shopifyKPIs.orders.value.toString()}
           change={shopifyKPIs.orders.change}
           sparkline={shopifyKPIs.orders.sparkline}
+          tooltip={SHOPIFY_TOOLTIPS.orders}
         />
         <KPICard
           title="AOV"
           value={formatCurrency(shopifyKPIs.aov.value, 2)}
           change={shopifyKPIs.aov.change}
           sparkline={shopifyKPIs.aov.sparkline}
+          tooltip={SHOPIFY_TOOLTIPS.aov}
         />
         <KPICard
           title="Units / Order"
           value={shopifyKPIs.unitsPerOrder.value.toFixed(1)}
           change={shopifyKPIs.unitsPerOrder.change}
           sparkline={shopifyKPIs.unitsPerOrder.sparkline}
+          tooltip={SHOPIFY_TOOLTIPS.unitsPerOrder}
         />
         <KPICard
           title="Refund Rate"
@@ -86,6 +103,7 @@ export default function ShopifyPage() {
           change={shopifyKPIs.refundRate.change}
           invertTrend
           sparkline={shopifyKPIs.refundRate.sparkline}
+          tooltip={SHOPIFY_TOOLTIPS.refundRate}
         />
       </div>
 

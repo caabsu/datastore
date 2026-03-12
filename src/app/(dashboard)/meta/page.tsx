@@ -71,6 +71,25 @@ function AudienceTypeBadge({ type }: { type: MetaAdSet['audienceType'] }) {
   );
 }
 
+const META_TOOLTIPS: Record<string, string> = {
+  spend:
+    "Total amount spent on Meta Ads in the selected period. Includes all campaign types (Conversions, CBO, ASC). Sourced from Meta Ads Manager reporting API.",
+  revenue:
+    "Total purchase revenue attributed to Meta Ads via the Meta Pixel and Conversions API. Uses a 7-day click / 1-day view attribution window by default.",
+  roas:
+    "Return on Ad Spend. Revenue attributed to Meta divided by Meta ad spend. Formula: Meta Revenue / Meta Spend. Does not account for COGS or other costs — use CM for true profitability.",
+  purchases:
+    "Total purchase conversion events attributed to Meta Ads. A single click can generate multiple purchases if the customer returns within the attribution window.",
+  cpa:
+    "Cost Per Acquisition. Average cost to generate one purchase. Formula: Meta Spend / Purchases. Lower is better — trend is inverted so a decrease shows green.",
+  incrROAS:
+    "Incrementality-adjusted ROAS. Estimates the revenue that would NOT have occurred without the ad. Calculated using holdout test data or modeled lift. More conservative than standard ROAS.",
+  hookRate:
+    "Percentage of video viewers who watch at least 3 seconds. Formula: 3-Second Video Views / Impressions. Only applies to video creatives. Higher hook rates indicate stronger creative openings.",
+  engagementDepth:
+    "Composite score (1-10) measuring organic interaction quality: likes, comments, shares, saves relative to reach. Higher scores indicate content that drives meaningful engagement beyond passive viewing.",
+};
+
 export default function MetaOverviewPage() {
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
   const [expandedAdSets, setExpandedAdSets] = useState<Set<string>>(new Set());
@@ -141,24 +160,28 @@ export default function MetaOverviewPage() {
           value={formatCurrency(metaKPIs.spend.value)}
           change={metaKPIs.spend.change}
           sparkline={metaKPIs.spend.sparkline}
+          tooltip={META_TOOLTIPS.spend}
         />
         <KPICard
           title="Revenue"
           value={formatCurrency(metaKPIs.revenue.value)}
           change={metaKPIs.revenue.change}
           sparkline={metaKPIs.revenue.sparkline}
+          tooltip={META_TOOLTIPS.revenue}
         />
         <KPICard
           title="ROAS"
           value={formatMultiplier(metaKPIs.roas.value)}
           change={metaKPIs.roas.change}
           sparkline={metaKPIs.roas.sparkline}
+          tooltip={META_TOOLTIPS.roas}
         />
         <KPICard
           title="Purchases"
           value={metaKPIs.purchases.value.toString()}
           change={metaKPIs.purchases.change}
           sparkline={metaKPIs.purchases.sparkline}
+          tooltip={META_TOOLTIPS.purchases}
         />
       </div>
 
@@ -170,24 +193,28 @@ export default function MetaOverviewPage() {
           change={metaKPIs.cpa.change}
           invertTrend
           sparkline={metaKPIs.cpa.sparkline}
+          tooltip={META_TOOLTIPS.cpa}
         />
         <KPICard
           title="Incr. ROAS"
           value={formatMultiplier(metaKPIs.incrROAS.value)}
           change={metaKPIs.incrROAS.change}
           sparkline={metaKPIs.incrROAS.sparkline}
+          tooltip={META_TOOLTIPS.incrROAS}
         />
         <KPICard
           title="Avg Hook Rate"
           value={formatPercent(metaKPIs.hookRate.value)}
           change={metaKPIs.hookRate.change}
           sparkline={metaKPIs.hookRate.sparkline}
+          tooltip={META_TOOLTIPS.hookRate}
         />
         <KPICard
           title="Avg Engagement Depth"
           value={metaKPIs.engagementDepth.value.toFixed(1)}
           change={metaKPIs.engagementDepth.change}
           sparkline={metaKPIs.engagementDepth.sparkline}
+          tooltip={META_TOOLTIPS.engagementDepth}
         />
       </div>
 
