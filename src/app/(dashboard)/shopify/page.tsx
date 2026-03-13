@@ -1,16 +1,13 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import KPICard from "@/components/cards/KPICard";
 import {
-  shopifyKPIs,
-  shopifyRevenueData,
-  topProducts,
   customerMix,
   hourlyOrders,
   geoData,
   shopifyFunnel,
   shopifyRepeatData,
-  shopifyDailyOrders,
   shopifyCategories,
   shopifyLTV,
   cohortData,
@@ -29,6 +26,22 @@ import {
   Legend,
 } from "recharts";
 import clsx from "clsx";
+
+/* ── Types matching /api/shopify response ── */
+interface ShopifyAPIResponse {
+  kpis: {
+    netRevenue: { value: number; change: number };
+    orders: { value: number; change: number };
+    aov: { value: number; change: number };
+    unitsPerOrder: { value: number; change: number };
+    refundRate: { value: number; change: number };
+    newCustomerPct: { value: number; change: number };
+  };
+  dailyRevenue: { date: string; total: number }[];
+  dailyOrders: { date: string; newOrders: number; repeatOrders: number }[];
+  topProducts: { name: string; revenue: number; units: number; aov: number }[];
+  rawCount: number;
+}
 
 function formatDollar(value: number): string {
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
@@ -63,7 +76,63 @@ const SHOPIFY_TOOLTIPS: Record<string, string> = {
 };
 
 export default function ShopifyPage() {
+  const [data, setData] = useState<ShopifyAPIResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchData() {
+      try {
+        const res = await fetch("/api/shopify?days=28");
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error ?? `API error: ${res.status}`);
+        }
+        const json: ShopifyAPIResponse = await res.json();
+        if (!cancelled) {
+          setData(json);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load Shopify data");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchData();
+    return () => { cancelled = true; };
+  }, []);
+
   const maxFunnelValue = shopifyFunnel[0].value;
+
+  if (loading) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <div className="text-sm text-zinc-500">Loading Shopify data...</div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="flex h-96 items-center justify-center">
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-6 py-4 text-sm text-red-400">
+          {error ?? "Failed to load Shopify data"}
+        </div>
+      </div>
+    );
+  }
+
+  const { kpis, dailyRevenue, dailyOrders: apiDailyOrders, topProducts: apiTopProducts } = data;
+
+  // Build sparkline arrays from dailyRevenue for KPI cards
+  const revenueSparkline = dailyRevenue.map((d) => d.total);
+  const ordersSparkline = apiDailyOrders.map((d) => d.newOrders + d.repeatOrders);
 
   return (
     <div className="space-y-6">
@@ -71,38 +140,35 @@ export default function ShopifyPage() {
       <div className="grid grid-cols-5 gap-4">
         <KPICard
           title="Net Revenue"
-          value={formatCurrency(shopifyKPIs.netRevenue.value)}
-          change={shopifyKPIs.netRevenue.change}
-          sparkline={shopifyKPIs.netRevenue.sparkline}
+          value={formatCurrency(kpis.netRevenue.value)}
+          change={kpis.netRevenue.change}
+          sparkline={revenueSparkline}
           tooltip={SHOPIFY_TOOLTIPS.netRevenue}
         />
         <KPICard
           title="Orders"
-          value={shopifyKPIs.orders.value.toString()}
-          change={shopifyKPIs.orders.change}
-          sparkline={shopifyKPIs.orders.sparkline}
+          value={kpis.orders.value.toString()}
+          change={kpis.orders.change}
+          sparkline={ordersSparkline}
           tooltip={SHOPIFY_TOOLTIPS.orders}
         />
         <KPICard
           title="AOV"
-          value={formatCurrency(shopifyKPIs.aov.value, 2)}
-          change={shopifyKPIs.aov.change}
-          sparkline={shopifyKPIs.aov.sparkline}
+          value={formatCurrency(kpis.aov.value, 2)}
+          change={kpis.aov.change}
           tooltip={SHOPIFY_TOOLTIPS.aov}
         />
         <KPICard
           title="Units / Order"
-          value={shopifyKPIs.unitsPerOrder.value.toFixed(1)}
-          change={shopifyKPIs.unitsPerOrder.change}
-          sparkline={shopifyKPIs.unitsPerOrder.sparkline}
+          value={kpis.unitsPerOrder.value.toFixed(1)}
+          change={kpis.unitsPerOrder.change}
           tooltip={SHOPIFY_TOOLTIPS.unitsPerOrder}
         />
         <KPICard
           title="Refund Rate"
-          value={formatPercent(shopifyKPIs.refundRate.value)}
-          change={shopifyKPIs.refundRate.change}
+          value={formatPercent(kpis.refundRate.value)}
+          change={kpis.refundRate.change}
           invertTrend
-          sparkline={shopifyKPIs.refundRate.sparkline}
           tooltip={SHOPIFY_TOOLTIPS.refundRate}
         />
       </div>
@@ -114,7 +180,7 @@ export default function ShopifyPage() {
         </h3>
         <ResponsiveContainer width="100%" height={300}>
           <AreaChart
-            data={shopifyRevenueData}
+            data={dailyRevenue}
             margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
           >
             <defs>
@@ -297,7 +363,7 @@ export default function ShopifyPage() {
           </h3>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart
-              data={shopifyDailyOrders}
+              data={apiDailyOrders}
               margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
             >
               <CartesianGrid stroke="#1F1F23" strokeDasharray="none" vertical={false} />
@@ -435,11 +501,9 @@ export default function ShopifyPage() {
               </tr>
             </thead>
             <tbody>
-              {topProducts.map((p, i) => {
-                const positive = p.change >= 0;
-                return (
+              {apiTopProducts.map((p, i) => (
                   <tr
-                    key={p.sku}
+                    key={p.name}
                     className="border-b border-border/50 transition-colors hover:bg-white/[0.02]"
                   >
                     <td className="px-2 py-2 font-mono text-xs text-zinc-500">
@@ -455,18 +519,11 @@ export default function ShopifyPage() {
                     <td className="px-2 py-2 text-right font-mono text-zinc-300">
                       {formatCurrency(p.aov, 2)}
                     </td>
-                    <td
-                      className={clsx(
-                        "px-2 py-2 text-right font-mono text-xs",
-                        positive ? "text-emerald-400" : "text-red-400"
-                      )}
-                    >
-                      {positive ? "+" : ""}
-                      {p.change}%
+                    <td className="px-2 py-2 text-right font-mono text-xs text-zinc-500">
+                      —
                     </td>
                   </tr>
-                );
-              })}
+                ))}
             </tbody>
           </table>
         </div>

@@ -1,16 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import KPICard from "@/components/cards/KPICard";
 import {
-  metaKPIs,
-  metaCampaigns,
-  metaDailyTrend,
+  metaKPIs as mockKPIs,
   metaCreativeBreakdown,
   metaAudienceBreakdown,
   metaFunnel,
 } from "@/lib/mock-data";
-import type { MetaAd, MetaAdSet } from "@/lib/mock-data";
+import type { MetaAdSet } from "@/lib/mock-data";
 import {
   formatCurrency,
   formatPercent,
@@ -29,6 +27,101 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+
+/* ── Types for API responses ── */
+
+interface AccountKPIs {
+  spend: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  purchases: number;
+  revenue: number;
+  roas: number;
+  cpa: number;
+  frequency: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  reachCPM: number;
+}
+
+interface DailyTrendPoint {
+  date: string;
+  spend: number;
+  revenue: number;
+  roas: number;
+  purchases: number;
+  impressions: number;
+  reach: number;
+}
+
+interface APICampaign {
+  id: string;
+  name: string;
+  status: string;
+  objective: string;
+  buyingType: string;
+  dailyBudget: number | null;
+  spend: number;
+  revenue: number;
+  roas: number;
+  purchases: number;
+  cpa: number;
+  reachCPM: number;
+  frequency: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+}
+
+interface APIAdSet {
+  id: string;
+  name: string;
+  campaignId: string;
+  status: string;
+  optimizationGoal: string;
+  targeting: Record<string, unknown> | null;
+  dailyBudget: number | null;
+  spend: number;
+  revenue: number;
+  roas: number;
+  purchases: number;
+  cpa: number;
+  reachCPM: number;
+  frequency: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+}
+
+interface APIAd {
+  id: string;
+  name: string;
+  adsetId: string;
+  campaignId: string;
+  status: string;
+  creative: Record<string, unknown> | null;
+  spend: number;
+  revenue: number;
+  roas: number;
+  purchases: number;
+  cpa: number;
+  reachCPM: number;
+  frequency: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+}
 
 function FatigueIndicator({ score }: { score: number }) {
   const color =
@@ -90,54 +183,231 @@ const META_TOOLTIPS: Record<string, string> = {
     "Composite score (1-10) measuring organic interaction quality: likes, comments, shares, saves relative to reach. Higher scores indicate content that drives meaningful engagement beyond passive viewing.",
 };
 
+/* ── Loading skeleton ── */
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div>
+        <div className="h-5 w-48 bg-zinc-800 rounded" />
+        <div className="h-3 w-72 bg-zinc-800/60 rounded mt-2" />
+      </div>
+      <div className="grid grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-lg border border-border bg-surface p-4 h-[130px]" />
+        ))}
+      </div>
+      <div className="grid grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-lg border border-border bg-surface p-4 h-[130px]" />
+        ))}
+      </div>
+      <div className="bg-surface border border-border rounded-lg p-5 h-[380px]" />
+    </div>
+  );
+}
+
 export default function MetaOverviewPage() {
+  /* ── Live data state ── */
+  const [accountKPIs, setAccountKPIs] = useState<AccountKPIs | null>(null);
+  const [dailyTrend, setDailyTrend] = useState<DailyTrendPoint[]>([]);
+  const [campaigns, setCampaigns] = useState<APICampaign[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  /* ── On-demand hierarchy data ── */
+  const [adSetsByCampaign, setAdSetsByCampaign] = useState<Record<string, APIAdSet[]>>({});
+  const [adsByAdSet, setAdsByAdSet] = useState<Record<string, APIAd[]>>({});
+  const [loadingAdSets, setLoadingAdSets] = useState<Set<string>>(new Set());
+  const [loadingAds, setLoadingAds] = useState<Set<string>>(new Set());
+
+  /* ── Expansion state ── */
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
   const [expandedAdSets, setExpandedAdSets] = useState<Set<string>>(new Set());
 
-  const toggleCampaign = (name: string) => {
+  /* ── Fetch account-level data + campaigns on mount ── */
+  useEffect(() => {
+    async function fetchData() {
+      setLoading(true);
+      setError(null);
+      try {
+        const [accountRes, campaignsRes] = await Promise.all([
+          fetch("/api/meta?level=account"),
+          fetch("/api/meta?level=campaigns"),
+        ]);
+
+        if (!accountRes.ok) throw new Error(`Account API error: ${accountRes.status}`);
+        if (!campaignsRes.ok) throw new Error(`Campaigns API error: ${campaignsRes.status}`);
+
+        const accountData = await accountRes.json();
+        const campaignsData = await campaignsRes.json();
+
+        setAccountKPIs(accountData.kpis);
+        setDailyTrend(accountData.dailyTrend ?? []);
+        setCampaigns(campaignsData.campaigns ?? []);
+      } catch (err) {
+        console.error("Failed to fetch Meta data:", err);
+        setError(err instanceof Error ? err.message : "Failed to load Meta data");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  /* ── Fetch ad sets for a campaign ── */
+  const fetchAdSets = useCallback(async (campaignId: string) => {
+    if (adSetsByCampaign[campaignId] || loadingAdSets.has(campaignId)) return;
+    setLoadingAdSets((prev) => new Set(prev).add(campaignId));
+    try {
+      const res = await fetch(`/api/meta?level=adsets&campaign_id=${campaignId}`);
+      if (!res.ok) throw new Error(`Ad sets API error: ${res.status}`);
+      const data = await res.json();
+      setAdSetsByCampaign((prev) => ({ ...prev, [campaignId]: data.adSets ?? [] }));
+    } catch (err) {
+      console.error("Failed to fetch ad sets:", err);
+    } finally {
+      setLoadingAdSets((prev) => {
+        const next = new Set(prev);
+        next.delete(campaignId);
+        return next;
+      });
+    }
+  }, [adSetsByCampaign, loadingAdSets]);
+
+  /* ── Fetch ads for an ad set ── */
+  const fetchAds = useCallback(async (adSetId: string) => {
+    if (adsByAdSet[adSetId] || loadingAds.has(adSetId)) return;
+    setLoadingAds((prev) => new Set(prev).add(adSetId));
+    try {
+      const res = await fetch(`/api/meta?level=ads&adset_id=${adSetId}`);
+      if (!res.ok) throw new Error(`Ads API error: ${res.status}`);
+      const data = await res.json();
+      setAdsByAdSet((prev) => ({ ...prev, [adSetId]: data.ads ?? [] }));
+    } catch (err) {
+      console.error("Failed to fetch ads:", err);
+    } finally {
+      setLoadingAds((prev) => {
+        const next = new Set(prev);
+        next.delete(adSetId);
+        return next;
+      });
+    }
+  }, [adsByAdSet, loadingAds]);
+
+  /* ── Toggle campaign expansion (fetch ad sets on expand) ── */
+  const toggleCampaign = useCallback((campaignId: string) => {
     setExpandedCampaigns((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) {
-        next.delete(name);
+      if (next.has(campaignId)) {
+        next.delete(campaignId);
         // Also collapse child ad sets
-        metaCampaigns
-          .find((c) => c.name === name)
-          ?.adSets.forEach((s) => {
-            setExpandedAdSets((p) => {
-              const n = new Set(p);
-              n.delete(`${name}::${s.name}`);
-              return n;
-            });
+        const adSets = adSetsByCampaign[campaignId] ?? [];
+        adSets.forEach((s) => {
+          setExpandedAdSets((p) => {
+            const n = new Set(p);
+            n.delete(`${campaignId}::${s.id}`);
+            return n;
           });
+        });
       } else {
-        next.add(name);
+        next.add(campaignId);
+        fetchAdSets(campaignId);
       }
       return next;
     });
-  };
+  }, [adSetsByCampaign, fetchAdSets]);
 
-  const toggleAdSet = (campaignName: string, adSetName: string) => {
-    const key = `${campaignName}::${adSetName}`;
+  /* ── Toggle ad set expansion (fetch ads on expand) ── */
+  const toggleAdSet = useCallback((campaignId: string, adSetId: string) => {
+    const key = `${campaignId}::${adSetId}`;
     setExpandedAdSets((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
         next.delete(key);
       } else {
         next.add(key);
+        fetchAds(adSetId);
       }
       return next;
     });
-  };
+  }, [fetchAds]);
 
+  /* ── Loading state ── */
+  if (loading) {
+    return <LoadingSkeleton />;
+  }
+
+  /* ── Error state ── */
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">
+            Meta Ads Overview
+          </h1>
+          <p className="text-xs text-muted mt-1">
+            Performance summary across all Meta campaigns — Last 7 days
+          </p>
+        </div>
+        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-5 text-sm text-red-400">
+          <p className="font-medium">Failed to load Meta data</p>
+          <p className="text-xs mt-1 text-red-400/70">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-3 px-3 py-1.5 text-xs font-medium rounded bg-red-500/20 hover:bg-red-500/30 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Derive KPI card values ── */
+  // Row 1: Spend, Revenue, ROAS, Purchases — all from live API
+  // Row 2: CPA from live, Incr. ROAS / Hook Rate / Engagement Depth from mock (not yet in API)
+  const spendValue = accountKPIs?.spend ?? 0;
+  const revenueValue = accountKPIs?.revenue ?? 0;
+  const roasValue = accountKPIs?.roas ?? 0;
+  const purchasesValue = accountKPIs?.purchases ?? 0;
+  const cpaValue = accountKPIs?.cpa ?? 0;
+
+  // Build sparklines from dailyTrend for Row 1 KPIs
+  const spendSparkline = dailyTrend.map((d) => d.spend);
+  const revenueSparkline = dailyTrend.map((d) => d.revenue);
+  const roasSparkline = dailyTrend.map((d) => d.roas);
+  const purchasesSparkline = dailyTrend.map((d) => d.purchases);
+  // CPA sparkline: spend / purchases per day
+  const cpaSparkline = dailyTrend.map((d) =>
+    d.purchases > 0 ? +(d.spend / d.purchases).toFixed(2) : 0
+  );
+
+  // Compute change % from sparklines (last 7 vs previous 7 from 28-day data)
+  function computeChange(data: number[]): number {
+    if (data.length < 14) return 0;
+    const recent = data.slice(-7);
+    const previous = data.slice(-14, -7);
+    const recentAvg = recent.reduce((s, v) => s + v, 0) / recent.length;
+    const prevAvg = previous.reduce((s, v) => s + v, 0) / previous.length;
+    if (prevAvg === 0) return 0;
+    return +((recentAvg - prevAvg) / prevAvg * 100).toFixed(1);
+  }
+
+  const spendChange = computeChange(spendSparkline);
+  const revenueChange = computeChange(revenueSparkline);
+  const roasChange = computeChange(roasSparkline);
+  const purchasesChange = computeChange(purchasesSparkline);
+  const cpaChange = computeChange(cpaSparkline);
+
+  /* ── Account totals from live campaign data ── */
   const accountTotals = {
-    spend: metaCampaigns.reduce((s, c) => s + c.spend, 0),
-    revenue: metaCampaigns.reduce((s, c) => s + c.revenue, 0),
-    cm: metaCampaigns.reduce((s, c) => s + c.cm, 0),
-    purchases: metaCampaigns.reduce((s, c) => s + c.purchases, 0),
-    roas:
-      metaCampaigns.reduce((s, c) => s + c.revenue, 0) /
-      metaCampaigns.reduce((s, c) => s + c.spend, 0),
+    spend: campaigns.reduce((s, c) => s + (c.spend ?? 0), 0),
+    revenue: campaigns.reduce((s, c) => s + (c.revenue ?? 0), 0),
+    purchases: campaigns.reduce((s, c) => s + (c.purchases ?? 0), 0),
+    roas: 0,
   };
+  accountTotals.roas =
+    accountTotals.spend > 0 ? accountTotals.revenue / accountTotals.spend : 0;
 
   const funnelMax = metaFunnel[0].value;
 
@@ -157,30 +427,30 @@ export default function MetaOverviewPage() {
       <div className="grid grid-cols-4 gap-4">
         <KPICard
           title="Spend"
-          value={formatCurrency(metaKPIs.spend.value)}
-          change={metaKPIs.spend.change}
-          sparkline={metaKPIs.spend.sparkline}
+          value={formatCurrency(spendValue)}
+          change={spendChange}
+          sparkline={spendSparkline}
           tooltip={META_TOOLTIPS.spend}
         />
         <KPICard
           title="Revenue"
-          value={formatCurrency(metaKPIs.revenue.value)}
-          change={metaKPIs.revenue.change}
-          sparkline={metaKPIs.revenue.sparkline}
+          value={formatCurrency(revenueValue)}
+          change={revenueChange}
+          sparkline={revenueSparkline}
           tooltip={META_TOOLTIPS.revenue}
         />
         <KPICard
           title="ROAS"
-          value={formatMultiplier(metaKPIs.roas.value)}
-          change={metaKPIs.roas.change}
-          sparkline={metaKPIs.roas.sparkline}
+          value={formatMultiplier(roasValue)}
+          change={roasChange}
+          sparkline={roasSparkline}
           tooltip={META_TOOLTIPS.roas}
         />
         <KPICard
           title="Purchases"
-          value={metaKPIs.purchases.value.toString()}
-          change={metaKPIs.purchases.change}
-          sparkline={metaKPIs.purchases.sparkline}
+          value={purchasesValue.toString()}
+          change={purchasesChange}
+          sparkline={purchasesSparkline}
           tooltip={META_TOOLTIPS.purchases}
         />
       </div>
@@ -189,31 +459,31 @@ export default function MetaOverviewPage() {
       <div className="grid grid-cols-4 gap-4">
         <KPICard
           title="CPA"
-          value={formatCurrency(metaKPIs.cpa.value, 2)}
-          change={metaKPIs.cpa.change}
+          value={formatCurrency(cpaValue, 2)}
+          change={cpaChange}
           invertTrend
-          sparkline={metaKPIs.cpa.sparkline}
+          sparkline={cpaSparkline}
           tooltip={META_TOOLTIPS.cpa}
         />
         <KPICard
           title="Incr. ROAS"
-          value={formatMultiplier(metaKPIs.incrROAS.value)}
-          change={metaKPIs.incrROAS.change}
-          sparkline={metaKPIs.incrROAS.sparkline}
+          value={formatMultiplier(mockKPIs.incrROAS.value)}
+          change={mockKPIs.incrROAS.change}
+          sparkline={mockKPIs.incrROAS.sparkline}
           tooltip={META_TOOLTIPS.incrROAS}
         />
         <KPICard
           title="Avg Hook Rate"
-          value={formatPercent(metaKPIs.hookRate.value)}
-          change={metaKPIs.hookRate.change}
-          sparkline={metaKPIs.hookRate.sparkline}
+          value={formatPercent(mockKPIs.hookRate.value)}
+          change={mockKPIs.hookRate.change}
+          sparkline={mockKPIs.hookRate.sparkline}
           tooltip={META_TOOLTIPS.hookRate}
         />
         <KPICard
           title="Avg Engagement Depth"
-          value={metaKPIs.engagementDepth.value.toFixed(1)}
-          change={metaKPIs.engagementDepth.change}
-          sparkline={metaKPIs.engagementDepth.sparkline}
+          value={mockKPIs.engagementDepth.value.toFixed(1)}
+          change={mockKPIs.engagementDepth.change}
+          sparkline={mockKPIs.engagementDepth.sparkline}
           tooltip={META_TOOLTIPS.engagementDepth}
         />
       </div>
@@ -223,115 +493,121 @@ export default function MetaOverviewPage() {
         <h3 className="text-sm font-medium text-zinc-400 mb-4">
           Spend & Revenue Trend — Last 28 Days
         </h3>
-        <ResponsiveContainer width="100%" height={320}>
-          <ComposedChart
-            data={metaDailyTrend}
-            margin={{ top: 8, right: 16, bottom: 0, left: 0 }}
-          >
-            <defs>
-              <linearGradient id="metaRevenueGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#22C55E" stopOpacity={0.15} />
-                <stop offset="100%" stopColor="#22C55E" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid
-              stroke="#1F1F23"
-              strokeDasharray="none"
-              vertical={false}
-            />
-            <XAxis
-              dataKey="date"
-              tick={{ fill: "#71717A", fontSize: 11 }}
-              axisLine={{ stroke: "#1F1F23" }}
-              tickLine={false}
-              interval={6}
-            />
-            <YAxis
-              yAxisId="left"
-              tick={{ fill: "#71717A", fontSize: 11 }}
-              axisLine={false}
-              tickLine={false}
-              width={50}
-              tickFormatter={(v: number) =>
-                v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`
-              }
-            />
-            <YAxis
-              yAxisId="right"
-              orientation="right"
-              tick={{ fill: "#71717A", fontSize: 11 }}
-              axisLine={false}
-              tickLine={false}
-              width={40}
-              tickFormatter={(v: number) => `${v}x`}
-              domain={["dataMin - 0.5", "dataMax + 0.3"]}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "#18181B",
-                border: "1px solid #27272A",
-                borderRadius: 8,
-                color: "#F4F4F5",
-                fontSize: 12,
-              }}
-              labelStyle={{ color: "#71717A", marginBottom: 4 }}
-              formatter={
-                ((value: number, name: string) => {
-                  if (name === "revenue")
-                    return [formatCompactCurrency(value), "Revenue"];
-                  if (name === "spend")
-                    return [formatCompactCurrency(value), "Spend"];
-                  if (name === "roas") return [`${value}x`, "ROAS"];
-                  return [value, name];
-                }) as never
-              }
-            />
-            <Area
-              yAxisId="left"
-              type="monotone"
-              dataKey="revenue"
-              stroke="#22C55E"
-              strokeWidth={2}
-              fill="url(#metaRevenueGrad)"
-              dot={false}
-              activeDot={{
-                r: 3,
-                fill: "#22C55E",
-                stroke: "#18181B",
-                strokeWidth: 2,
-              }}
-            />
-            <Line
-              yAxisId="left"
-              type="monotone"
-              dataKey="spend"
-              stroke="#1877F2"
-              strokeWidth={2}
-              dot={false}
-              activeDot={{
-                r: 3,
-                fill: "#1877F2",
-                stroke: "#18181B",
-                strokeWidth: 2,
-              }}
-            />
-            <Line
-              yAxisId="right"
-              type="monotone"
-              dataKey="roas"
-              stroke="#F59E0B"
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-              dot={false}
-              activeDot={{
-                r: 3,
-                fill: "#F59E0B",
-                stroke: "#18181B",
-                strokeWidth: 2,
-              }}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
+        {dailyTrend.length > 0 ? (
+          <ResponsiveContainer width="100%" height={320}>
+            <ComposedChart
+              data={dailyTrend}
+              margin={{ top: 8, right: 16, bottom: 0, left: 0 }}
+            >
+              <defs>
+                <linearGradient id="metaRevenueGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#22C55E" stopOpacity={0.15} />
+                  <stop offset="100%" stopColor="#22C55E" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid
+                stroke="#1F1F23"
+                strokeDasharray="none"
+                vertical={false}
+              />
+              <XAxis
+                dataKey="date"
+                tick={{ fill: "#71717A", fontSize: 11 }}
+                axisLine={{ stroke: "#1F1F23" }}
+                tickLine={false}
+                interval={6}
+              />
+              <YAxis
+                yAxisId="left"
+                tick={{ fill: "#71717A", fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                width={50}
+                tickFormatter={(v: number) =>
+                  v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`
+                }
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tick={{ fill: "#71717A", fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                width={40}
+                tickFormatter={(v: number) => `${v}x`}
+                domain={["dataMin - 0.5", "dataMax + 0.3"]}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "#18181B",
+                  border: "1px solid #27272A",
+                  borderRadius: 8,
+                  color: "#F4F4F5",
+                  fontSize: 12,
+                }}
+                labelStyle={{ color: "#71717A", marginBottom: 4 }}
+                formatter={
+                  ((value: number, name: string) => {
+                    if (name === "revenue")
+                      return [formatCompactCurrency(value), "Revenue"];
+                    if (name === "spend")
+                      return [formatCompactCurrency(value), "Spend"];
+                    if (name === "roas") return [`${value}x`, "ROAS"];
+                    return [value, name];
+                  }) as never
+                }
+              />
+              <Area
+                yAxisId="left"
+                type="monotone"
+                dataKey="revenue"
+                stroke="#22C55E"
+                strokeWidth={2}
+                fill="url(#metaRevenueGrad)"
+                dot={false}
+                activeDot={{
+                  r: 3,
+                  fill: "#22C55E",
+                  stroke: "#18181B",
+                  strokeWidth: 2,
+                }}
+              />
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="spend"
+                stroke="#1877F2"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{
+                  r: 3,
+                  fill: "#1877F2",
+                  stroke: "#18181B",
+                  strokeWidth: 2,
+                }}
+              />
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="roas"
+                stroke="#F59E0B"
+                strokeWidth={1.5}
+                strokeDasharray="4 3"
+                dot={false}
+                activeDot={{
+                  r: 3,
+                  fill: "#F59E0B",
+                  stroke: "#18181B",
+                  strokeWidth: 2,
+                }}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex items-center justify-center h-[320px] text-sm text-zinc-500">
+            No trend data available
+          </div>
+        )}
         <div className="mt-2 flex items-center gap-5 text-[11px] text-zinc-500">
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-[2px] w-3 bg-emerald-500 rounded" />
@@ -645,26 +921,26 @@ export default function MetaOverviewPage() {
                 <th className="px-2 py-2.5 text-right">Spend</th>
                 <th className="px-2 py-2.5 text-right">Revenue</th>
                 <th className="px-2 py-2.5 text-right">ROAS</th>
-                <th className="px-2 py-2.5 text-right">CM</th>
-                <th className="px-2 py-2.5 text-right">CM %</th>
                 <th className="px-2 py-2.5 text-right">CPA</th>
                 <th className="px-2 py-2.5 text-right">Purch.</th>
                 <th className="px-2 py-2.5 text-right">Reach CPM</th>
                 <th className="px-2 py-2.5 text-right">Freq.</th>
-                <th className="px-2 py-2.5 text-right">Hook</th>
-                <th className="px-2 py-2.5 text-right">Fatigue</th>
+                <th className="px-2 py-2.5 text-right">CTR</th>
+                <th className="px-2 py-2.5 text-right">CPC</th>
               </tr>
             </thead>
             <tbody>
-              {metaCampaigns.map((campaign) => {
-                const isCampaignExpanded = expandedCampaigns.has(campaign.name);
+              {campaigns.map((campaign) => {
+                const isCampaignExpanded = expandedCampaigns.has(campaign.id);
+                const campaignAdSets = adSetsByCampaign[campaign.id] ?? [];
+                const isLoadingAdSets = loadingAdSets.has(campaign.id);
                 return (
                   <>
-                    {/* ═══ CAMPAIGN ROW ═══ */}
+                    {/* === CAMPAIGN ROW === */}
                     <tr
-                      key={`c-${campaign.name}`}
+                      key={`c-${campaign.id}`}
                       className="border-b border-border/50 cursor-pointer transition-colors hover:bg-white/[0.02] bg-zinc-900/20"
-                      onClick={() => toggleCampaign(campaign.name)}
+                      onClick={() => toggleCampaign(campaign.id)}
                     >
                       <td className="pl-3 pr-1 py-2.5 text-zinc-500">
                         {isCampaignExpanded ? (
@@ -678,15 +954,22 @@ export default function MetaOverviewPage() {
                           <span className="font-semibold text-foreground">
                             {campaign.name}
                           </span>
-                          <span className="text-[10px] text-zinc-600">
-                            {campaign.adSets.length} ad sets · {campaign.ads.length} ads
+                          <span
+                            className={clsx(
+                              "text-[10px] px-1.5 py-0.5 rounded",
+                              campaign.status === "ACTIVE"
+                                ? "bg-emerald-500/10 text-emerald-400"
+                                : "bg-zinc-500/10 text-zinc-500"
+                            )}
+                          >
+                            {campaign.status}
                           </span>
                         </div>
                       </td>
                       <td className="px-2 py-2.5">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-zinc-500">{campaign.type}</span>
-                          {campaign.dailyBudget && (
+                          <span className="text-[10px] text-zinc-500">{campaign.buyingType ?? ""}</span>
+                          {campaign.dailyBudget != null && (
                             <span className="text-[10px] text-zinc-600">
                               ${campaign.dailyBudget}/day
                             </span>
@@ -694,39 +977,54 @@ export default function MetaOverviewPage() {
                         </div>
                       </td>
                       <td className="px-2 py-2.5 text-right font-mono font-semibold">
-                        {formatCurrency(campaign.spend)}
+                        {formatCurrency(campaign.spend ?? 0)}
                       </td>
                       <td className="px-2 py-2.5 text-right font-mono font-semibold">
-                        {formatCurrency(campaign.revenue)}
+                        {formatCurrency(campaign.revenue ?? 0)}
                       </td>
                       <td className="px-2 py-2.5 text-right font-mono font-semibold">
-                        {formatMultiplier(campaign.roas)}
+                        {formatMultiplier(campaign.roas ?? 0)}
                       </td>
-                      <td className={clsx("px-2 py-2.5 text-right font-mono font-semibold", campaign.cm >= 0 ? "text-emerald-400" : "text-red-400")}>
-                        {formatCurrency(campaign.cm)}
+                      <td className="px-2 py-2.5 text-right font-mono">
+                        {formatCurrency(campaign.cpa ?? 0, 2)}
+                      </td>
+                      <td className="px-2 py-2.5 text-right font-mono">
+                        {campaign.purchases ?? 0}
+                      </td>
+                      <td className="px-2 py-2.5 text-right font-mono">
+                        {formatCurrency(campaign.reachCPM ?? 0, 2)}
                       </td>
                       <td className="px-2 py-2.5 text-right font-mono text-zinc-400">
-                        {campaign.cmPct.toFixed(1)}%
+                        {(campaign.frequency ?? 0).toFixed(1)}
                       </td>
-                      <td className="px-2 py-2.5 text-right font-mono">
-                        {formatCurrency(campaign.cpa, 2)}
+                      <td className="px-2 py-2.5 text-right font-mono text-zinc-400">
+                        {(campaign.ctr ?? 0).toFixed(2)}%
                       </td>
-                      <td className="px-2 py-2.5 text-right font-mono">
-                        {campaign.purchases}
+                      <td className="px-2 py-2.5 text-right font-mono text-zinc-400">
+                        {formatCurrency(campaign.cpc ?? 0, 2)}
                       </td>
-                      <td className="px-2 py-2.5 text-right font-mono">
-                        {formatCurrency(campaign.reachCPM, 2)}
-                      </td>
-                      <td className="px-2 py-2.5 text-right font-mono text-zinc-500">—</td>
-                      <td className="px-2 py-2.5 text-right font-mono text-zinc-500">—</td>
-                      <td className="px-2 py-2.5 text-right font-mono text-zinc-500">—</td>
                     </tr>
 
-                    {/* ═══ AD SET ROWS ═══ */}
+                    {/* === AD SET ROWS === */}
+                    {isCampaignExpanded && isLoadingAdSets && (
+                      <tr key={`loading-${campaign.id}`} className="border-b border-border/30 bg-zinc-900/40">
+                        <td colSpan={12} className="px-6 py-3 text-xs text-zinc-500 animate-pulse">
+                          Loading ad sets...
+                        </td>
+                      </tr>
+                    )}
                     {isCampaignExpanded &&
-                      campaign.adSets.map((adSet: MetaAdSet) => {
-                        const adSetKey = `${campaign.name}::${adSet.name}`;
+                      !isLoadingAdSets &&
+                      campaignAdSets.map((adSet) => {
+                        const adSetKey = `${campaign.id}::${adSet.id}`;
                         const isAdSetExpanded = expandedAdSets.has(adSetKey);
+                        const adSetAds = adsByAdSet[adSet.id] ?? [];
+                        const isLoadingTheseAds = loadingAds.has(adSet.id);
+                        // Derive targeting label from API targeting object
+                        const targetingLabel =
+                          adSet.targeting && typeof adSet.targeting === "object"
+                            ? JSON.stringify(adSet.targeting).slice(0, 40)
+                            : "";
                         return (
                           <>
                             <tr
@@ -734,7 +1032,7 @@ export default function MetaOverviewPage() {
                               className="border-b border-border/30 bg-zinc-900/40 cursor-pointer transition-colors hover:bg-white/[0.015]"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                toggleAdSet(campaign.name, adSet.name);
+                                toggleAdSet(campaign.id, adSet.id);
                               }}
                             >
                               <td className="pl-3 pr-1 py-2 text-zinc-600">
@@ -751,73 +1049,66 @@ export default function MetaOverviewPage() {
                                   <span
                                     className={clsx(
                                       "inline-block h-2 w-2 rounded-sm flex-shrink-0",
-                                      adSet.status === "Active" ? "bg-emerald-400" : adSet.status === "Learning" ? "bg-amber-400" : "bg-zinc-600"
+                                      adSet.status === "ACTIVE" ? "bg-emerald-400" : "bg-zinc-600"
                                     )}
                                   />
                                   <span className="font-medium text-zinc-200 text-xs">
                                     {adSet.name}
                                   </span>
-                                  <span className="text-[10px] text-zinc-600">
-                                    {adSet.ads.length} ads
-                                  </span>
                                 </div>
                               </td>
                               <td className="px-2 py-2">
                                 <div className="flex items-center gap-1.5">
-                                  <AudienceTypeBadge type={adSet.audienceType} />
-                                  <span className="text-[10px] text-zinc-600 truncate max-w-[120px]" title={adSet.targeting}>
-                                    {adSet.targeting}
-                                  </span>
+                                  <span className="text-[10px] text-zinc-500">{adSet.optimizationGoal ?? ""}</span>
+                                  {targetingLabel && (
+                                    <span className="text-[10px] text-zinc-600 truncate max-w-[120px]" title={targetingLabel}>
+                                      {targetingLabel}
+                                    </span>
+                                  )}
                                 </div>
                               </td>
                               <td className="px-2 py-2 text-right font-mono text-xs font-medium">
-                                {formatCurrency(adSet.spend)}
+                                {formatCurrency(adSet.spend ?? 0)}
                               </td>
                               <td className="px-2 py-2 text-right font-mono text-xs font-medium">
-                                {formatCurrency(adSet.revenue)}
+                                {formatCurrency(adSet.revenue ?? 0)}
                               </td>
                               <td className="px-2 py-2 text-right">
-                                <span className={clsx("font-mono text-xs font-medium", adSet.roas >= 3.0 ? "text-emerald-400" : adSet.roas >= 2.0 ? "text-zinc-300" : "text-red-400")}>
-                                  {formatMultiplier(adSet.roas)}
+                                <span className={clsx("font-mono text-xs font-medium", (adSet.roas ?? 0) >= 3.0 ? "text-emerald-400" : (adSet.roas ?? 0) >= 2.0 ? "text-zinc-300" : "text-red-400")}>
+                                  {formatMultiplier(adSet.roas ?? 0)}
                                 </span>
-                                {adSet.roasTrend !== 0 && (
-                                  <span className={clsx("ml-1 text-[9px]", adSet.roasTrend > 0 ? "text-emerald-500" : "text-red-500")}>
-                                    {adSet.roasTrend > 0 ? "▲" : "▼"}{Math.abs(adSet.roasTrend)}%
-                                  </span>
-                                )}
-                              </td>
-                              <td className={clsx("px-2 py-2 text-right font-mono text-xs", adSet.cm >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                {adSet.cm < 0 ? "-" : ""}{formatCurrency(Math.abs(adSet.cm))}
-                              </td>
-                              <td className={clsx("px-2 py-2 text-right font-mono text-xs", adSet.cmPct >= 20 ? "text-emerald-400" : adSet.cmPct >= 0 ? "text-zinc-400" : "text-red-400")}>
-                                {adSet.cmPct.toFixed(1)}%
                               </td>
                               <td className="px-2 py-2 text-right font-mono text-xs">
-                                {formatCurrency(adSet.cpa, 2)}
+                                {formatCurrency(adSet.cpa ?? 0, 2)}
                               </td>
                               <td className="px-2 py-2 text-right font-mono text-xs">
-                                {adSet.purchases}
+                                {adSet.purchases ?? 0}
                               </td>
-                              <td className="px-2 py-2 text-right">
-                                <span className={clsx("font-mono text-xs", adSet.reachCPM <= 12 ? "text-emerald-400" : adSet.reachCPM <= 22 ? "text-zinc-300" : "text-red-400")}>
-                                  ${adSet.reachCPM.toFixed(2)}
-                                </span>
-                                {adSet.reachCPMTrend !== 0 && (
-                                  <span className={clsx("ml-1 text-[9px]", adSet.reachCPMTrend < 0 ? "text-emerald-500" : "text-red-500")}>
-                                    {adSet.reachCPMTrend > 0 ? "▲" : "▼"}{Math.abs(adSet.reachCPMTrend)}%
-                                  </span>
-                                )}
+                              <td className="px-2 py-2 text-right font-mono text-xs">
+                                {formatCurrency(adSet.reachCPM ?? 0, 2)}
                               </td>
-                              <td className={clsx("px-2 py-2 text-right font-mono text-xs", adSet.frequency <= 1.5 ? "text-emerald-400" : adSet.frequency <= 2.5 ? "text-zinc-300" : "text-red-400")}>
-                                {adSet.frequency.toFixed(1)}
+                              <td className={clsx("px-2 py-2 text-right font-mono text-xs", (adSet.frequency ?? 0) <= 1.5 ? "text-emerald-400" : (adSet.frequency ?? 0) <= 2.5 ? "text-zinc-300" : "text-red-400")}>
+                                {(adSet.frequency ?? 0).toFixed(1)}
                               </td>
-                              <td className="px-2 py-2 text-right font-mono text-xs text-zinc-500">—</td>
-                              <td className="px-2 py-2 text-right font-mono text-xs text-zinc-500">—</td>
+                              <td className="px-2 py-2 text-right font-mono text-xs text-zinc-400">
+                                {(adSet.ctr ?? 0).toFixed(2)}%
+                              </td>
+                              <td className="px-2 py-2 text-right font-mono text-xs text-zinc-400">
+                                {formatCurrency(adSet.cpc ?? 0, 2)}
+                              </td>
                             </tr>
 
-                            {/* ═══ AD ROWS ═══ */}
+                            {/* === AD ROWS === */}
+                            {isAdSetExpanded && isLoadingTheseAds && (
+                              <tr key={`loading-ads-${adSet.id}`} className="border-b border-border/20 bg-zinc-950/40">
+                                <td colSpan={12} className="px-10 py-2.5 text-xs text-zinc-500 animate-pulse">
+                                  Loading ads...
+                                </td>
+                              </tr>
+                            )}
                             {isAdSetExpanded &&
-                              adSet.ads.map((ad: MetaAd) => (
+                              !isLoadingTheseAds &&
+                              adSetAds.map((ad) => (
                                 <tr
                                   key={`a-${ad.id}`}
                                   className="border-b border-border/20 bg-zinc-950/40 transition-colors hover:bg-white/[0.01]"
@@ -828,81 +1119,50 @@ export default function MetaOverviewPage() {
                                       <span
                                         className={clsx(
                                           "inline-block h-1.5 w-1.5 rounded-full flex-shrink-0",
-                                          ad.status === "Active" ? "bg-emerald-400" : "bg-zinc-600"
+                                          ad.status === "ACTIVE" ? "bg-emerald-400" : "bg-zinc-600"
                                         )}
                                       />
                                       <span className="text-zinc-300 text-[11px]">
-                                        {ad.adName}
+                                        {ad.name}
                                       </span>
-                                      {ad.status === "Paused" && (
-                                        <span className="text-[9px] text-zinc-600 uppercase">paused</span>
+                                      {ad.status !== "ACTIVE" && (
+                                        <span className="text-[9px] text-zinc-600 uppercase">{ad.status?.toLowerCase()}</span>
                                       )}
                                     </div>
                                   </td>
                                   <td className="px-2 py-1.5">
-                                    <div className="flex items-center gap-1.5">
-                                      <span
-                                        className={clsx(
-                                          "inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-medium",
-                                          ad.creativeType === "Video"
-                                            ? "bg-purple-500/10 text-purple-400"
-                                            : ad.creativeType === "Carousel"
-                                              ? "bg-blue-500/10 text-blue-400"
-                                              : "bg-zinc-500/10 text-zinc-400"
-                                        )}
-                                      >
-                                        {ad.creativeType}
-                                      </span>
-                                      <span className="text-[10px] text-zinc-600">
-                                        {ad.daysActive}d
-                                      </span>
-                                    </div>
-                                  </td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[11px]">
-                                    {formatCurrency(ad.spend)}
-                                  </td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[11px]">
-                                    {formatCurrency(ad.revenue)}
-                                  </td>
-                                  <td className="px-2 py-1.5 text-right">
-                                    <span className={clsx("font-mono text-[11px] font-medium", ad.roas >= 3.0 ? "text-emerald-400" : ad.roas >= 2.0 ? "text-zinc-300" : "text-red-400")}>
-                                      {formatMultiplier(ad.roas)}
+                                    <span className="text-[10px] text-zinc-600">
+                                      ID: {ad.id}
                                     </span>
-                                    {ad.roasTrend !== 0 && (
-                                      <span className={clsx("ml-1 text-[8px]", ad.roasTrend > 0 ? "text-emerald-500" : "text-red-500")}>
-                                        {ad.roasTrend > 0 ? "▲" : "▼"}{Math.abs(ad.roasTrend)}%
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className={clsx("px-2 py-1.5 text-right font-mono text-[11px]", ad.contributionMargin >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                    {ad.contributionMargin < 0 ? "-" : ""}{formatCurrency(Math.abs(ad.contributionMargin))}
-                                  </td>
-                                  <td className={clsx("px-2 py-1.5 text-right font-mono text-[11px]", ad.cmPct >= 20 ? "text-emerald-400" : ad.cmPct >= 0 ? "text-zinc-400" : "text-red-400")}>
-                                    {ad.cmPct.toFixed(1)}%
                                   </td>
                                   <td className="px-2 py-1.5 text-right font-mono text-[11px]">
-                                    {formatCurrency(ad.cpa, 2)}
+                                    {formatCurrency(ad.spend ?? 0)}
                                   </td>
                                   <td className="px-2 py-1.5 text-right font-mono text-[11px]">
-                                    {ad.purchases}
-                                  </td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[11px]">
-                                    ${ad.reachCPM.toFixed(2)}
-                                  </td>
-                                  <td className={clsx("px-2 py-1.5 text-right font-mono text-[11px]", ad.frequency <= 1.5 ? "text-emerald-400" : ad.frequency <= 2.5 ? "text-zinc-300" : "text-red-400")}>
-                                    {ad.frequency.toFixed(1)}
-                                  </td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[11px]">
-                                    {ad.hookRate !== null ? (
-                                      <span className={clsx(ad.hookRate >= 30 ? "text-emerald-400" : ad.hookRate >= 20 ? "text-zinc-300" : "text-red-400")}>
-                                        {ad.hookRate.toFixed(1)}%
-                                      </span>
-                                    ) : (
-                                      <span className="text-zinc-600">—</span>
-                                    )}
+                                    {formatCurrency(ad.revenue ?? 0)}
                                   </td>
                                   <td className="px-2 py-1.5 text-right">
-                                    <FatigueIndicator score={ad.fatigueScore} />
+                                    <span className={clsx("font-mono text-[11px] font-medium", (ad.roas ?? 0) >= 3.0 ? "text-emerald-400" : (ad.roas ?? 0) >= 2.0 ? "text-zinc-300" : "text-red-400")}>
+                                      {formatMultiplier(ad.roas ?? 0)}
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-[11px]">
+                                    {formatCurrency(ad.cpa ?? 0, 2)}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-[11px]">
+                                    {ad.purchases ?? 0}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-[11px]">
+                                    {formatCurrency(ad.reachCPM ?? 0, 2)}
+                                  </td>
+                                  <td className={clsx("px-2 py-1.5 text-right font-mono text-[11px]", (ad.frequency ?? 0) <= 1.5 ? "text-emerald-400" : (ad.frequency ?? 0) <= 2.5 ? "text-zinc-300" : "text-red-400")}>
+                                    {(ad.frequency ?? 0).toFixed(1)}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-[11px] text-zinc-400">
+                                    {(ad.ctr ?? 0).toFixed(2)}%
+                                  </td>
+                                  <td className="px-2 py-1.5 text-right font-mono text-[11px] text-zinc-400">
+                                    {formatCurrency(ad.cpc ?? 0, 2)}
                                   </td>
                                 </tr>
                               ))}
@@ -918,7 +1178,7 @@ export default function MetaOverviewPage() {
                 <td className="pl-3 pr-1 py-2.5"></td>
                 <td className="px-2 py-2.5 text-foreground">Account Total</td>
                 <td className="px-2 py-2.5 text-[10px] text-zinc-600">
-                  {metaCampaigns.length} campaigns · {metaCampaigns.reduce((s, c) => s + c.adSets.length, 0)} ad sets · {metaCampaigns.reduce((s, c) => s + c.ads.length, 0)} ads
+                  {campaigns.length} campaigns
                 </td>
                 <td className="px-2 py-2.5 text-right font-mono">
                   {formatCurrency(accountTotals.spend)}
@@ -928,12 +1188,6 @@ export default function MetaOverviewPage() {
                 </td>
                 <td className="px-2 py-2.5 text-right font-mono">
                   {formatMultiplier(accountTotals.roas)}
-                </td>
-                <td className={clsx("px-2 py-2.5 text-right font-mono", accountTotals.cm >= 0 ? "text-emerald-400" : "text-red-400")}>
-                  {formatCurrency(accountTotals.cm)}
-                </td>
-                <td className="px-2 py-2.5 text-right font-mono text-zinc-400">
-                  {accountTotals.revenue > 0 ? ((accountTotals.cm / accountTotals.revenue) * 100).toFixed(1) : "0.0"}%
                 </td>
                 <td className="px-2 py-2.5 text-right font-mono">
                   {formatCurrency(accountTotals.purchases > 0 ? accountTotals.spend / accountTotals.purchases : 0, 2)}
