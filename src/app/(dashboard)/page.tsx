@@ -1,19 +1,8 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import KPICard from "@/components/cards/KPICard";
-import AlertCard from "@/components/cards/AlertCard";
 import RevenueChart from "@/components/charts/RevenueChart";
-import {
-  overviewKPIs,
-  revenueVsSpendData,
-  channelPerformance,
-  dailyROASTrend,
-  customerAcquisition,
-  topPerformers,
-  dailySpendByChannel,
-  dailyBriefing,
-  alerts,
-} from "@/lib/mock-data";
 import { formatCurrency, formatPercent, formatMultiplier } from "@/lib/format";
 import clsx from "clsx";
 import {
@@ -48,12 +37,435 @@ const METRIC_TOOLTIPS: Record<string, string> = {
     "Percentage of total orders placed by first-time buyers. Formula: New Customer Orders / Total Orders. Indicates the balance between acquisition (new) and retention (returning). A healthy DTC brand typically targets 35-50%.",
 };
 
+// ── Types for API responses ──
+
+interface ShopifyKPI {
+  value: number;
+  change: number;
+}
+
+interface ShopifyData {
+  kpis: {
+    netRevenue: ShopifyKPI;
+    orders: ShopifyKPI;
+    aov: ShopifyKPI;
+    unitsPerOrder: ShopifyKPI;
+    refundRate: ShopifyKPI;
+    newCustomerPct: ShopifyKPI;
+  };
+  dailyRevenue: { date: string; total: number }[];
+  dailyOrders: { date: string; newOrders: number; repeatOrders: number }[];
+  topProducts: {
+    name: string;
+    revenue: number;
+    units: number;
+    aov: number;
+    sku: string | null;
+    change: number;
+  }[];
+  customerMix: {
+    newPct: number;
+    returningPct: number;
+    newRevenue: number;
+    returningRevenue: number;
+    data: { date: string; new: number; returning: number }[];
+  };
+  shopifyRepeatData: {
+    repeatRate: number;
+    avgOrdersPerCustomer: number;
+    repeatRevenuePct: number;
+  };
+  shopifyLTV: {
+    overall: number;
+    new30d: number;
+    returning: number;
+    byChannel: { channel: string; ltv: number; cacRatio: number }[];
+  };
+  rawCount: number;
+}
+
+interface MetaAccountKpis {
+  spend: number;
+  revenue: number;
+  roas: number;
+  purchases: number;
+  impressions: number;
+  reach: number;
+  cpa: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  reachCPM: number;
+  hookRate: number;
+  engagementDepth: number;
+}
+
+interface MetaDailyTrend {
+  date: string;
+  spend: number;
+  revenue: number;
+  roas: number;
+  purchases: number;
+  impressions: number;
+  reach: number;
+  hookRate: number;
+  engagementDepth: number;
+}
+
+interface MetaAccountData {
+  kpis: MetaAccountKpis | null;
+  dailyTrend: MetaDailyTrend[];
+}
+
+interface MetaCampaign {
+  id: string;
+  name: string;
+  status: string;
+  objective: string;
+  buyingType: string;
+  dailyBudget: number | null;
+  spend: number;
+  revenue: number;
+  roas: number;
+  purchases: number;
+  cpa: number;
+}
+
+interface MetaCampaignsData {
+  campaigns: MetaCampaign[];
+}
+
+interface Briefing {
+  summary: string;
+  highlights: string[];
+}
+
+// ── Channel performance row ──
+interface ChannelRow {
+  channel: string;
+  label: string;
+  revenue: number;
+  spend: number;
+  roas: number;
+  roasChange: number;
+  orders: number;
+  cm: number;
+  cmPct: number;
+  share: number;
+  color: string;
+}
+
+// ── Loading skeleton ──
+function SkeletonCard() {
+  return (
+    <div className="rounded-lg border border-border bg-surface p-4 animate-pulse">
+      <div className="h-3 w-20 bg-zinc-800 rounded mb-3" />
+      <div className="h-7 w-24 bg-zinc-800 rounded mb-2" />
+      <div className="h-3 w-16 bg-zinc-800 rounded" />
+      <div className="mt-3 h-8 w-full bg-zinc-800/50 rounded" />
+    </div>
+  );
+}
+
+function SkeletonChart() {
+  return (
+    <div className="bg-surface border border-border rounded-lg p-5 animate-pulse">
+      <div className="h-4 w-48 bg-zinc-800 rounded mb-4" />
+      <div className="h-[300px] bg-zinc-800/30 rounded" />
+    </div>
+  );
+}
+
+function SkeletonTable() {
+  return (
+    <div className="bg-surface border border-border rounded-lg p-5 animate-pulse">
+      <div className="h-4 w-40 bg-zinc-800 rounded mb-4" />
+      <div className="space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-10 bg-zinc-800/30 rounded" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Error state ──
+function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="rounded-lg border border-red-500/30 bg-red-500/[0.06] p-4 flex items-center justify-between">
+      <div>
+        <p className="text-sm font-medium text-red-400">Failed to load dashboard data</p>
+        <p className="text-xs text-zinc-400 mt-1">{message}</p>
+      </div>
+      <button
+        onClick={onRetry}
+        className="text-xs font-medium text-red-400 hover:text-red-300 border border-red-500/30 rounded px-3 py-1.5 transition-colors"
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
+// ── Helper: format date to "MMM dd" ──
+function formatDateLabel(isoDate: string): string {
+  const d = new Date(isoDate + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+}
+
 export default function DashboardPage() {
-  const maxRevenue = Math.max(...channelPerformance.map((c) => c.revenue));
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Data state
+  const [shopifyData, setShopifyData] = useState<ShopifyData | null>(null);
+  const [metaAccount, setMetaAccount] = useState<MetaAccountData | null>(null);
+  const [metaCampaigns, setMetaCampaigns] = useState<MetaCampaign[]>([]);
+  const [briefing, setBriefing] = useState<Briefing | null>(null);
+  const [briefingLoading, setBriefingLoading] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [shopifyRes, metaAccountRes, metaCampaignsRes] = await Promise.all([
+        fetch("/api/shopify?days=7"),
+        fetch("/api/meta?level=account"),
+        fetch("/api/meta?level=campaigns"),
+      ]);
+
+      if (!shopifyRes.ok) throw new Error(`Shopify API returned ${shopifyRes.status}`);
+      if (!metaAccountRes.ok) throw new Error(`Meta API returned ${metaAccountRes.status}`);
+      if (!metaCampaignsRes.ok) throw new Error(`Meta Campaigns API returned ${metaCampaignsRes.status}`);
+
+      const [shopify, metaAcct, metaCamp] = await Promise.all([
+        shopifyRes.json() as Promise<ShopifyData>,
+        metaAccountRes.json() as Promise<MetaAccountData>,
+        metaCampaignsRes.json() as Promise<MetaCampaignsData>,
+      ]);
+
+      setShopifyData(shopify);
+      setMetaAccount(metaAcct);
+      setMetaCampaigns(metaCamp.campaigns ?? []);
+      setLoading(false);
+
+      // After main data loads, fetch AI briefing in background
+      fetchBriefing(shopify, metaAcct);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchBriefing = async (shopify: ShopifyData, meta: MetaAccountData) => {
+    if (!meta.kpis) return;
+    setBriefingLoading(true);
+    try {
+      const netRevenue = shopify.kpis.netRevenue.value;
+      const adSpend = meta.kpis.spend;
+      const blendedROAS = adSpend > 0 ? netRevenue / adSpend : 0;
+      const cm = netRevenue - adSpend;
+      const cmPct = netRevenue > 0 ? (cm / netRevenue) * 100 : 0;
+
+      const res = await fetch("/api/ai/briefing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          netRevenue,
+          adSpend,
+          blendedROAS,
+          orders: shopify.kpis.orders.value,
+          aov: shopify.kpis.aov.value,
+          contributionMargin: cm,
+          cmPct,
+          topChannel: "Meta",
+          topChannelROAS: meta.kpis.roas,
+          metaSpend: meta.kpis.spend,
+          metaRevenue: meta.kpis.revenue,
+          metaROAS: meta.kpis.roas,
+          newCustomerPct: shopify.kpis.newCustomerPct.value,
+          refundRate: shopify.kpis.refundRate.value,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBriefing(data);
+      }
+    } catch {
+      // Briefing is non-critical; silently fail
+    } finally {
+      setBriefingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // ── Loading state ──
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonCard key={`r1-${i}`} />
+          ))}
+        </div>
+        <div className="grid grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonCard key={`r2-${i}`} />
+          ))}
+        </div>
+        <SkeletonChart />
+        <SkeletonTable />
+        <div className="grid grid-cols-2 gap-4">
+          <SkeletonChart />
+          <SkeletonChart />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Error state ──
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <ErrorBanner message={error} onRetry={fetchData} />
+      </div>
+    );
+  }
+
+  // ── Compute derived data ──
+  const shopify = shopifyData!;
+  const meta = metaAccount!;
+  const metaKpis = meta.kpis;
+
+  const netRevenue = shopify.kpis.netRevenue.value;
+  const adSpend = metaKpis?.spend ?? 0;
+  const blendedROAS = adSpend > 0 ? netRevenue / adSpend : 0;
+  const contributionMargin = netRevenue - adSpend;
+  const cmPct = netRevenue > 0 ? (contributionMargin / netRevenue) * 100 : 0;
+  const orders = shopify.kpis.orders.value;
+  const aov = shopify.kpis.aov.value;
+  const newCustomerPct = shopify.kpis.newCustomerPct.value;
+
+  // New Customer CAC = Ad Spend * (newCustomerPct/100) / newCustomers
+  // newCustomers estimated from orders * newCustomerPct/100
+  const newCustomers = Math.round(orders * (newCustomerPct / 100));
+  const newCustomerCAC = newCustomers > 0 ? (adSpend * (newCustomerPct / 100)) / newCustomers : 0;
+
+  // Daily sparklines from shopify daily revenue
+  const revenueSparkline = shopify.dailyRevenue.map((d) => d.total);
+
+  // Daily sparklines from meta daily trend
+  const spendSparkline = meta.dailyTrend.map((d) => d.spend);
+  const roasSparkline = meta.dailyTrend.map((d) => d.roas);
+
+  // ── Revenue vs Spend chart (combined) ──
+  // Merge shopify daily revenue + meta daily spend into one chart
+  const metaDailyMap = new Map(meta.dailyTrend.map((d) => [d.date, d]));
+  const shopifyDailyMap = new Map(shopify.dailyRevenue.map((d) => [d.date, d]));
+  // Collect all dates from both
+  const allDates = Array.from(
+    new Set([
+      ...meta.dailyTrend.map((d) => d.date),
+      ...shopify.dailyRevenue.map((d) => d.date),
+    ])
+  ).sort();
+  const revenueVsSpendData = allDates.map((date) => ({
+    date: formatDateLabel(date),
+    revenue: shopifyDailyMap.get(date)?.total ?? 0,
+    spend: metaDailyMap.get(date)?.spend ?? 0,
+  }));
+
+  // ── Channel performance table ──
+  // Meta campaigns as rows + Shopify organic/other as a row
+  const metaRevenue = metaKpis?.revenue ?? 0;
+  const metaOrders = metaKpis?.purchases ?? 0;
+  const metaCM = metaRevenue - adSpend;
+
+  // Shopify organic = total shopify revenue - meta attributed revenue
+  const organicRevenue = Math.max(0, netRevenue - metaRevenue);
+  const organicOrders = Math.max(0, orders - metaOrders);
+
+  const channelPerformance: ChannelRow[] = [
+    {
+      channel: "meta",
+      label: "Meta Ads",
+      revenue: metaRevenue,
+      spend: adSpend,
+      roas: metaKpis?.roas ?? 0,
+      roasChange: 0,
+      orders: metaOrders,
+      cm: metaCM,
+      cmPct: metaRevenue > 0 ? (metaCM / metaRevenue) * 100 : 0,
+      share: netRevenue > 0 ? (metaRevenue / netRevenue) * 100 : 0,
+      color: "#1877F2",
+    },
+    {
+      channel: "organic_other",
+      label: "Organic / Other",
+      revenue: organicRevenue,
+      spend: 0,
+      roas: Infinity,
+      roasChange: 0,
+      orders: organicOrders,
+      cm: organicRevenue,
+      cmPct: organicRevenue > 0 ? 100 : 0,
+      share: netRevenue > 0 ? (organicRevenue / netRevenue) * 100 : 0,
+      color: "#8B5CF6",
+    },
+  ];
+
+  const maxRevenue = Math.max(...channelPerformance.map((c) => c.revenue), 1);
   const totalRevenue = channelPerformance.reduce((s, c) => s + c.revenue, 0);
   const totalSpend = channelPerformance.reduce((s, c) => s + c.spend, 0);
   const totalCM = channelPerformance.reduce((s, c) => s + c.cm, 0);
   const totalOrders = channelPerformance.reduce((s, c) => s + c.orders, 0);
+
+  // ── Daily ROAS trend ──
+  const dailyROASTrend = allDates.map((date) => {
+    const metaDay = metaDailyMap.get(date);
+    const shopifyDay = shopifyDailyMap.get(date);
+    const dayRevenue = shopifyDay?.total ?? 0;
+    const daySpend = metaDay?.spend ?? 0;
+    return {
+      date: formatDateLabel(date),
+      roas: daySpend > 0 ? +(dayRevenue / daySpend).toFixed(2) : 0,
+      target: 3.0,
+    };
+  });
+
+  // ── Daily spend by channel ──
+  const dailySpendByChannel = meta.dailyTrend.map((d) => ({
+    date: formatDateLabel(d.date),
+    meta: Math.round(d.spend),
+    google: 0, // No Google data yet — placeholder
+  }));
+
+  // ── Customer acquisition section ──
+  const custMix = shopify.customerMix;
+  const returningCount = orders - newCustomers;
+  const returningAov = returningCount > 0 ? custMix.returningRevenue / returningCount : 0;
+  const repeatRate = shopify.shopifyRepeatData?.repeatRate ?? 0;
+  const ltv = shopify.shopifyLTV?.overall ?? 0;
+  const ltvCacRatio = newCustomerCAC > 0 ? +(ltv / newCustomerCAC).toFixed(1) : 0;
+
+  // ── Top performers ──
+  const topProduct = shopify.topProducts.length > 0 ? shopify.topProducts[0] : null;
+  const topCampaign = metaCampaigns.length > 0
+    ? metaCampaigns.sort((a, b) => (b.roas ?? 0) - (a.roas ?? 0))[0]
+    : null;
+  // For top ad, use the top campaign as a proxy (ad-level data requires a separate API call)
+  const topAd = metaCampaigns.length > 0
+    ? metaCampaigns.sort((a, b) => (b.roas ?? 0) - (a.roas ?? 0))[0]
+    : null;
+
+  const todayStr = new Date().toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 
   return (
     <div className="space-y-6">
@@ -61,31 +473,31 @@ export default function DashboardPage() {
       <div className="grid grid-cols-4 gap-4">
         <KPICard
           title="Net Revenue"
-          value={formatCurrency(overviewKPIs.netRevenue.value)}
-          change={overviewKPIs.netRevenue.change}
-          sparkline={overviewKPIs.netRevenue.sparkline}
+          value={formatCurrency(netRevenue)}
+          change={shopify.kpis.netRevenue.change}
+          sparkline={revenueSparkline}
           tooltip={METRIC_TOOLTIPS.netRevenue}
         />
         <KPICard
           title="Ad Spend"
-          value={formatCurrency(overviewKPIs.adSpend.value)}
-          change={overviewKPIs.adSpend.change}
-          sparkline={overviewKPIs.adSpend.sparkline}
+          value={formatCurrency(adSpend)}
+          change={0}
+          sparkline={spendSparkline}
           tooltip={METRIC_TOOLTIPS.adSpend}
         />
         <KPICard
           title="Blended ROAS (MER)"
-          value={formatMultiplier(overviewKPIs.blendedROAS.value)}
-          change={overviewKPIs.blendedROAS.change}
-          sparkline={overviewKPIs.blendedROAS.sparkline}
+          value={formatMultiplier(blendedROAS)}
+          change={0}
+          sparkline={roasSparkline}
           tooltip={METRIC_TOOLTIPS.blendedROAS}
         />
         <KPICard
           title="Contribution Margin"
-          value={formatCurrency(overviewKPIs.contributionMargin.value)}
-          change={overviewKPIs.contributionMargin.change}
-          sparkline={overviewKPIs.contributionMargin.sparkline}
-          subtitle={`${overviewKPIs.contributionMargin.pct}%`}
+          value={formatCurrency(contributionMargin)}
+          change={0}
+          sparkline={[]}
+          subtitle={`${cmPct.toFixed(1)}%`}
           tooltip={METRIC_TOOLTIPS.contributionMargin}
         />
       </div>
@@ -94,31 +506,31 @@ export default function DashboardPage() {
       <div className="grid grid-cols-4 gap-4">
         <KPICard
           title="Orders"
-          value={overviewKPIs.orders.value.toString()}
-          change={overviewKPIs.orders.change}
-          sparkline={overviewKPIs.orders.sparkline}
+          value={orders.toString()}
+          change={shopify.kpis.orders.change}
+          sparkline={shopify.dailyOrders.map((d) => d.newOrders + d.repeatOrders)}
           tooltip={METRIC_TOOLTIPS.orders}
         />
         <KPICard
           title="AOV"
-          value={formatCurrency(overviewKPIs.aov.value, 2)}
-          change={overviewKPIs.aov.change}
-          sparkline={overviewKPIs.aov.sparkline}
+          value={formatCurrency(aov, 2)}
+          change={shopify.kpis.aov.change}
+          sparkline={[]}
           tooltip={METRIC_TOOLTIPS.aov}
         />
         <KPICard
           title="New Customer CAC"
-          value={formatCurrency(overviewKPIs.newCustomerCAC.value, 2)}
-          change={overviewKPIs.newCustomerCAC.change}
+          value={formatCurrency(newCustomerCAC, 2)}
+          change={0}
           invertTrend
-          sparkline={overviewKPIs.newCustomerCAC.sparkline}
+          sparkline={[]}
           tooltip={METRIC_TOOLTIPS.newCustomerCAC}
         />
         <KPICard
           title="New Customer %"
-          value={formatPercent(overviewKPIs.newCustomerPct.value)}
-          change={overviewKPIs.newCustomerPct.change}
-          sparkline={overviewKPIs.newCustomerPct.sparkline}
+          value={formatPercent(newCustomerPct)}
+          change={shopify.kpis.newCustomerPct.change}
+          sparkline={[]}
           tooltip={METRIC_TOOLTIPS.newCustomerPct}
         />
       </div>
@@ -126,7 +538,7 @@ export default function DashboardPage() {
       {/* Revenue vs Spend Chart */}
       <div className="bg-surface border border-border rounded-lg p-5">
         <h3 className="text-sm font-medium text-zinc-400 mb-4">
-          Revenue vs Ad Spend — Last 28 Days
+          Revenue vs Ad Spend — Last 7 Days
         </h3>
         <RevenueChart data={revenueVsSpendData} />
       </div>
@@ -189,14 +601,14 @@ export default function DashboardPage() {
                     {ch.spend > 0 ? (
                       formatCurrency(ch.spend)
                     ) : (
-                      <span className="text-zinc-600">—</span>
+                      <span className="text-zinc-600">&mdash;</span>
                     )}
                   </td>
                   <td className="px-3 py-3 text-right">
                     <span className="font-mono font-medium">
-                      {ch.roas === Infinity ? "∞" : formatMultiplier(ch.roas)}
+                      {ch.roas === Infinity ? "\u221E" : formatMultiplier(ch.roas)}
                     </span>
-                    {ch.roas !== Infinity && (
+                    {ch.roas !== Infinity && ch.roasChange !== 0 && (
                       <span
                         className={clsx(
                           "ml-1.5 text-[10px]",
@@ -207,7 +619,7 @@ export default function DashboardPage() {
                               : "text-zinc-500"
                         )}
                       >
-                        {ch.roasChange > 0 ? "▲" : ch.roasChange < 0 ? "▼" : "—"}
+                        {ch.roasChange > 0 ? "\u25B2" : ch.roasChange < 0 ? "\u25BC" : "\u2014"}
                         {Math.abs(ch.roasChange)}%
                       </span>
                     )}
@@ -237,13 +649,13 @@ export default function DashboardPage() {
                   {formatCurrency(totalSpend)}
                 </td>
                 <td className="px-3 py-3 text-right font-mono">
-                  {formatMultiplier(totalRevenue / totalSpend)}
+                  {totalSpend > 0 ? formatMultiplier(totalRevenue / totalSpend) : "\u221E"}
                 </td>
                 <td className="px-3 py-3 text-right font-mono">
                   {formatCurrency(totalCM)}
                 </td>
                 <td className="px-3 py-3 text-right font-mono text-zinc-400">
-                  {((totalCM / totalRevenue) * 100).toFixed(1)}%
+                  {totalRevenue > 0 ? ((totalCM / totalRevenue) * 100).toFixed(1) : "0.0"}%
                 </td>
                 <td className="px-3 py-3 text-right font-mono">
                   {totalOrders}
@@ -262,7 +674,7 @@ export default function DashboardPage() {
         {/* ROAS Trend */}
         <div className="bg-surface border border-border rounded-lg p-5">
           <h3 className="text-sm font-medium text-zinc-400 mb-4">
-            Blended ROAS — 28 Day Trend
+            Blended ROAS — 7 Day Trend
           </h3>
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart
@@ -285,7 +697,6 @@ export default function DashboardPage() {
                 tick={{ fill: "#71717A", fontSize: 11 }}
                 axisLine={{ stroke: "#1F1F23" }}
                 tickLine={false}
-                interval={6}
               />
               <YAxis
                 tick={{ fill: "#71717A", fontSize: 11 }}
@@ -365,7 +776,6 @@ export default function DashboardPage() {
                 tick={{ fill: "#71717A", fontSize: 11 }}
                 axisLine={{ stroke: "#1F1F23" }}
                 tickLine={false}
-                interval={6}
               />
               <YAxis
                 tick={{ fill: "#71717A", fontSize: 11 }}
@@ -434,15 +844,15 @@ export default function DashboardPage() {
                 New Customers
               </p>
               <p className="text-xl font-mono font-semibold text-emerald-400">
-                {customerAcquisition.new.count}
+                {newCustomers}
               </p>
               <p className="text-xs text-zinc-400 mt-1">
-                {formatCurrency(customerAcquisition.new.revenue)} rev
+                {formatCurrency(custMix.newRevenue)} rev
               </p>
               <p className="text-xs text-zinc-500 mt-0.5">
                 CAC{" "}
                 <span className="font-mono">
-                  {formatCurrency(customerAcquisition.new.cac, 2)}
+                  {formatCurrency(newCustomerCAC, 2)}
                 </span>
               </p>
             </div>
@@ -451,15 +861,15 @@ export default function DashboardPage() {
                 Returning
               </p>
               <p className="text-xl font-mono font-semibold text-blue-400">
-                {customerAcquisition.returning.count}
+                {returningCount}
               </p>
               <p className="text-xs text-zinc-400 mt-1">
-                {formatCurrency(customerAcquisition.returning.revenue)} rev
+                {formatCurrency(custMix.returningRevenue)} rev
               </p>
               <p className="text-xs text-zinc-500 mt-0.5">
                 AOV{" "}
                 <span className="font-mono">
-                  {formatCurrency(customerAcquisition.returning.aov, 2)}
+                  {formatCurrency(returningAov, 2)}
                 </span>
               </p>
             </div>
@@ -470,7 +880,7 @@ export default function DashboardPage() {
                 Repeat Rate
               </p>
               <p className="text-sm font-mono font-medium mt-0.5">
-                {customerAcquisition.repeatRate}%
+                {repeatRate.toFixed(1)}%
               </p>
             </div>
             <div className="text-center">
@@ -478,7 +888,7 @@ export default function DashboardPage() {
                 LTV
               </p>
               <p className="text-sm font-mono font-medium mt-0.5">
-                {formatCurrency(customerAcquisition.ltv, 2)}
+                {formatCurrency(ltv, 2)}
               </p>
             </div>
             <div className="text-center">
@@ -486,7 +896,7 @@ export default function DashboardPage() {
                 LTV:CAC
               </p>
               <p className="text-sm font-mono font-medium mt-0.5">
-                {customerAcquisition.ltvCacRatio}x
+                {ltvCacRatio}x
               </p>
             </div>
           </div>
@@ -494,37 +904,41 @@ export default function DashboardPage() {
 
         {/* Top Performers — 3 cols */}
         <div className="col-span-3 grid grid-cols-3 gap-4">
-          {/* Best Ad */}
+          {/* Best Ad (using top campaign as proxy) */}
           <div className="bg-surface border border-border rounded-lg p-4">
             <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">
               Top Ad
             </p>
-            <p className="text-sm font-medium text-zinc-200 truncate">
-              {topPerformers.ad.name}
-            </p>
-            <p className="text-[11px] text-zinc-500 mt-0.5">
-              {topPerformers.ad.channel}
-            </p>
-            <div className="mt-3 space-y-1.5">
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-500">ROAS</span>
-                <span className="font-mono font-medium text-emerald-400">
-                  {formatMultiplier(topPerformers.ad.roas)}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-500">CM</span>
-                <span className="font-mono font-medium">
-                  {formatCurrency(topPerformers.ad.cm)}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-500">Hook Rate</span>
-                <span className="font-mono font-medium">
-                  {topPerformers.ad.hookRate}%
-                </span>
-              </div>
-            </div>
+            {topAd ? (
+              <>
+                <p className="text-sm font-medium text-zinc-200 truncate">
+                  {topAd.name}
+                </p>
+                <p className="text-[11px] text-zinc-500 mt-0.5">Meta</p>
+                <div className="mt-3 space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">ROAS</span>
+                    <span className="font-mono font-medium text-emerald-400">
+                      {formatMultiplier(topAd.roas)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">Revenue</span>
+                    <span className="font-mono font-medium">
+                      {formatCurrency(topAd.revenue)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">Spend</span>
+                    <span className="font-mono font-medium">
+                      {formatCurrency(topAd.spend)}
+                    </span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-500 mt-2">No data</p>
+            )}
           </div>
 
           {/* Best Product */}
@@ -532,30 +946,36 @@ export default function DashboardPage() {
             <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">
               Top Product
             </p>
-            <p className="text-sm font-medium text-zinc-200 truncate">
-              {topPerformers.product.name}
-            </p>
-            <p className="text-[11px] text-zinc-500 mt-0.5">Shopify</p>
-            <div className="mt-3 space-y-1.5">
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-500">Revenue</span>
-                <span className="font-mono font-medium text-emerald-400">
-                  {formatCurrency(topPerformers.product.revenue)}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-500">Units</span>
-                <span className="font-mono font-medium">
-                  {topPerformers.product.units}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-500">Change</span>
-                <span className="font-mono font-medium text-emerald-400">
-                  +{topPerformers.product.change}%
-                </span>
-              </div>
-            </div>
+            {topProduct ? (
+              <>
+                <p className="text-sm font-medium text-zinc-200 truncate">
+                  {topProduct.name}
+                </p>
+                <p className="text-[11px] text-zinc-500 mt-0.5">Shopify</p>
+                <div className="mt-3 space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">Revenue</span>
+                    <span className="font-mono font-medium text-emerald-400">
+                      {formatCurrency(topProduct.revenue)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">Units</span>
+                    <span className="font-mono font-medium">
+                      {topProduct.units}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">AOV</span>
+                    <span className="font-mono font-medium">
+                      {formatCurrency(topProduct.aov, 2)}
+                    </span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-500 mt-2">No data</p>
+            )}
           </div>
 
           {/* Best Campaign */}
@@ -563,32 +983,36 @@ export default function DashboardPage() {
             <p className="text-[10px] uppercase tracking-wider text-zinc-500 mb-2">
               Top Campaign
             </p>
-            <p className="text-sm font-medium text-zinc-200 truncate">
-              {topPerformers.campaign.name}
-            </p>
-            <p className="text-[11px] text-zinc-500 mt-0.5">
-              {topPerformers.campaign.channel}
-            </p>
-            <div className="mt-3 space-y-1.5">
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-500">ROAS</span>
-                <span className="font-mono font-medium text-emerald-400">
-                  {formatMultiplier(topPerformers.campaign.roas)}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-500">CM</span>
-                <span className="font-mono font-medium">
-                  {formatCurrency(topPerformers.campaign.cm)}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-500">Purchases</span>
-                <span className="font-mono font-medium">
-                  {topPerformers.campaign.purchases}
-                </span>
-              </div>
-            </div>
+            {topCampaign ? (
+              <>
+                <p className="text-sm font-medium text-zinc-200 truncate">
+                  {topCampaign.name}
+                </p>
+                <p className="text-[11px] text-zinc-500 mt-0.5">Meta</p>
+                <div className="mt-3 space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">ROAS</span>
+                    <span className="font-mono font-medium text-emerald-400">
+                      {formatMultiplier(topCampaign.roas)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">Revenue</span>
+                    <span className="font-mono font-medium">
+                      {formatCurrency(topCampaign.revenue)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-zinc-500">Purchases</span>
+                    <span className="font-mono font-medium">
+                      {topCampaign.purchases}
+                    </span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-500 mt-2">No data</p>
+            )}
           </div>
         </div>
       </div>
@@ -596,40 +1020,52 @@ export default function DashboardPage() {
       {/* AI Briefing */}
       <div className="bg-surface border border-border rounded-lg p-5">
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-lg">🤖</span>
+          <span className="text-lg">&#129302;</span>
           <h3 className="text-sm font-medium text-zinc-300">
-            Datastore Daily Briefing — {dailyBriefing.date}
+            Datastore Daily Briefing &mdash; {todayStr}
           </h3>
         </div>
-        <p className="text-sm text-zinc-400 leading-relaxed">
-          {dailyBriefing.summary}
-        </p>
-        {dailyBriefing.highlights && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {dailyBriefing.highlights.map((h, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center rounded-full bg-zinc-800/60 px-2.5 py-0.5 text-[11px] text-zinc-400"
-              >
-                {h}
-              </span>
-            ))}
+        {briefingLoading ? (
+          <div className="animate-pulse space-y-2">
+            <div className="h-4 w-full bg-zinc-800 rounded" />
+            <div className="h-4 w-3/4 bg-zinc-800 rounded" />
+            <div className="h-4 w-1/2 bg-zinc-800 rounded" />
           </div>
+        ) : briefing ? (
+          <>
+            <p className="text-sm text-zinc-400 leading-relaxed">
+              {briefing.summary}
+            </p>
+            {briefing.highlights && briefing.highlights.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {briefing.highlights.map((h, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center rounded-full bg-zinc-800/60 px-2.5 py-0.5 text-[11px] text-zinc-400"
+                  >
+                    {h}
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-zinc-500">
+            Generating briefing...
+          </p>
         )}
-        <button className="mt-3 text-xs text-accent hover:text-blue-400 transition-colors">
-          Read Full Briefing →
-        </button>
       </div>
 
       {/* Active Alerts */}
       <div>
         <h3 className="text-sm font-medium text-zinc-400 mb-3">
-          Active Alerts ({alerts.length})
+          Active Alerts (0)
         </h3>
-        <div className="space-y-3">
-          {alerts.map((alert) => (
-            <AlertCard key={alert.id} {...alert} />
-          ))}
+        <div className="rounded-lg border border-border bg-surface p-6 text-center">
+          <p className="text-sm text-zinc-500">No active alerts</p>
+          <p className="text-xs text-zinc-600 mt-1">
+            Alerts will appear here when anomalies are detected in your metrics.
+          </p>
         </div>
       </div>
     </div>

@@ -48,6 +48,9 @@ export interface MetaInsight {
   video_p75_watched_actions?: { action_type: string; value: string }[];
   video_p100_watched_actions?: { action_type: string; value: string }[];
   video_thruplay_watched_actions?: { action_type: string; value: string }[];
+  video_play_actions?: { action_type: string; value: string }[];
+  // Age breakdown field (present when breakdowns=age is used)
+  age?: string;
 }
 
 export interface MetaCampaignRaw {
@@ -102,13 +105,42 @@ function extractAction(insight: MetaInsight, actionType: string): number {
   return action ? parseFloat(action.value) : 0;
 }
 
+/** Try multiple action_type strings, return the first match */
+function extractActionMulti(insight: MetaInsight, actionTypes: string[]): number {
+  if (!insight.actions) return 0;
+  for (const t of actionTypes) {
+    const action = insight.actions.find((a) => a.action_type === t);
+    if (action) return parseFloat(action.value);
+  }
+  return 0;
+}
+
 function extractActionValue(insight: MetaInsight, actionType: string): number {
   const action = insight.action_values?.find((a) => a.action_type === actionType);
   return action ? parseFloat(action.value) : 0;
 }
 
+/** Try multiple action_type strings for action_values */
+function extractActionValueMulti(insight: MetaInsight, actionTypes: string[]): number {
+  if (!insight.action_values) return 0;
+  for (const t of actionTypes) {
+    const action = insight.action_values.find((a) => a.action_type === t);
+    if (action) return parseFloat(action.value);
+  }
+  return 0;
+}
+
 function extractCostPerAction(insight: MetaInsight, actionType: string): number {
   const action = insight.cost_per_action_type?.find((a) => a.action_type === actionType);
+  return action ? parseFloat(action.value) : 0;
+}
+
+/** Extract video_play_actions (3-second video views) */
+function extractVideoPlayActions(insight: MetaInsight): number {
+  if (!insight.video_play_actions) return 0;
+  const action = insight.video_play_actions.find(
+    (a) => a.action_type === "video_view"
+  );
   return action ? parseFloat(action.value) : 0;
 }
 
@@ -127,6 +159,7 @@ const INSIGHT_FIELDS = [
   "action_values",
   "cost_per_action_type",
   "video_thruplay_watched_actions",
+  "video_play_actions",
 ].join(",");
 
 export async function getAccountInsights(params?: {
@@ -215,6 +248,33 @@ export async function getAds(params?: {
   return data.data;
 }
 
+export async function getAccountInsightsWithBreakdown(params?: {
+  date_preset?: string;
+  time_range?: { since: string; until: string };
+  breakdowns?: string;
+}): Promise<MetaInsight[]> {
+  const queryParams: Record<string, string> = {
+    fields: INSIGHT_FIELDS,
+    level: "account",
+  };
+
+  if (params?.time_range) {
+    queryParams.time_range = JSON.stringify(params.time_range);
+  } else {
+    queryParams.date_preset = params?.date_preset ?? "last_7d";
+  }
+
+  if (params?.breakdowns) {
+    queryParams.breakdowns = params.breakdowns;
+  }
+
+  const data = await metaFetch<{ data: MetaInsight[] }>(
+    `/${AD_ACCOUNT_ID}/insights`,
+    queryParams
+  );
+  return data.data;
+}
+
 // ── Computed Metrics ──
 
 export function computeInsightMetrics(insight: MetaInsight) {
@@ -222,8 +282,14 @@ export function computeInsightMetrics(insight: MetaInsight) {
   const impressions = parseInt(insight.impressions);
   const reach = parseInt(insight.reach);
   const clicks = parseInt(insight.clicks);
-  const purchases = extractAction(insight, "purchase");
-  const revenue = extractActionValue(insight, "purchase");
+  const purchases = extractActionMulti(insight, [
+    "purchase",
+    "offsite_conversion.fb_pixel_purchase",
+  ]);
+  const revenue = extractActionValueMulti(insight, [
+    "purchase",
+    "offsite_conversion.fb_pixel_purchase",
+  ]);
   const cpa = extractCostPerAction(insight, "purchase");
   const roas = spend > 0 ? revenue / spend : 0;
   const frequency = parseFloat(insight.frequency);
@@ -231,6 +297,23 @@ export function computeInsightMetrics(insight: MetaInsight) {
   const cpc = parseFloat(insight.cpc);
   const cpm = parseFloat(insight.cpm);
   const reachCPM = reach > 0 ? (spend / reach) * 1000 : 0;
+
+  // Funnel action metrics
+  const linkClicks = extractAction(insight, "link_click");
+  const addToCart = extractActionMulti(insight, [
+    "offsite_conversion.fb_pixel_add_to_cart",
+    "add_to_cart",
+  ]);
+  const initiateCheckout = extractActionMulti(insight, [
+    "offsite_conversion.fb_pixel_initiate_checkout",
+    "initiate_checkout",
+  ]);
+
+  // Video / engagement metrics
+  const videoPlayActions = extractVideoPlayActions(insight);
+  const hookRate = impressions > 0 ? (videoPlayActions / impressions) * 100 : 0;
+  const postEngagement = extractAction(insight, "post_engagement");
+  const engagementDepth = reach > 0 ? (postEngagement / reach) * 100 : 0;
 
   return {
     spend,
@@ -246,6 +329,11 @@ export function computeInsightMetrics(insight: MetaInsight) {
     cpc,
     cpm,
     reachCPM,
+    linkClicks,
+    addToCart,
+    initiateCheckout,
+    hookRate,
+    engagementDepth,
     date_start: insight.date_start,
     date_stop: insight.date_stop,
   };

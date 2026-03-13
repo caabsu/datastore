@@ -2,16 +2,6 @@
 
 import { useState, useEffect } from "react";
 import KPICard from "@/components/cards/KPICard";
-import {
-  customerMix,
-  hourlyOrders,
-  geoData,
-  shopifyFunnel,
-  shopifyRepeatData,
-  shopifyCategories,
-  shopifyLTV,
-  cohortData,
-} from "@/lib/mock-data";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import {
   AreaChart,
@@ -39,8 +29,40 @@ interface ShopifyAPIResponse {
   };
   dailyRevenue: { date: string; total: number }[];
   dailyOrders: { date: string; newOrders: number; repeatOrders: number }[];
-  topProducts: { name: string; revenue: number; units: number; aov: number }[];
+  topProducts: { name: string; revenue: number; units: number; aov: number; sku: string; change: number }[];
   rawCount: number;
+  customerMix: {
+    newPct: number;
+    returningPct: number;
+    newRevenue: number;
+    returningRevenue: number;
+    data: { date: string; new: number; returning: number }[];
+  };
+  hourlyOrders: { hour: string; orders: number }[];
+  geoData: { state: string; orders: number; revenue: number }[];
+  shopifyCategories: { category: string; revenue: number; units: number; aov: number; pct: number; change: number }[];
+  shopifyLTV: {
+    overall: number;
+    new30d: number;
+    returning: number;
+    byChannel: { channel: string; ltv: number; cacRatio: number }[];
+  };
+  shopifyRepeatData: {
+    repeatRate: number;
+    avgTimeBetween: number | null;
+    avgOrdersPerCustomer: number;
+    repeatRevenuePct: number;
+  };
+  cohortData: {
+    cohort: string;
+    size: number;
+    m0: number | null;
+    m1: number | null;
+    m2: number | null;
+    m3: number | null;
+    m4: number | null;
+    m5: number | null;
+  }[];
 }
 
 function formatDollar(value: number): string {
@@ -108,8 +130,6 @@ export default function ShopifyPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const maxFunnelValue = shopifyFunnel[0].value;
-
   if (loading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -128,7 +148,19 @@ export default function ShopifyPage() {
     );
   }
 
-  const { kpis, dailyRevenue, dailyOrders: apiDailyOrders, topProducts: apiTopProducts } = data;
+  const {
+    kpis,
+    dailyRevenue,
+    dailyOrders: apiDailyOrders,
+    topProducts: apiTopProducts,
+    customerMix,
+    hourlyOrders,
+    geoData,
+    shopifyCategories,
+    shopifyLTV,
+    shopifyRepeatData,
+    cohortData,
+  } = data;
 
   // Build sparkline arrays from dailyRevenue for KPI cards
   const revenueSparkline = dailyRevenue.map((d) => d.total);
@@ -221,58 +253,17 @@ export default function ShopifyPage() {
         </ResponsiveContainer>
       </div>
 
-      {/* ── Conversion Funnel ── */}
+      {/* ── Conversion Funnel — Not Available ── */}
       <div className="rounded-lg border border-border bg-surface p-5">
-        <h3 className="mb-4 text-sm font-medium text-zinc-400">
+        <h3 className="mb-2 text-sm font-medium text-zinc-400">
           Conversion Funnel
         </h3>
-        <div className="space-y-3">
-          {shopifyFunnel.map((step, i) => {
-            const widthPct = (step.value / maxFunnelValue) * 100;
-            return (
-              <div key={step.stage} className="flex items-center gap-4">
-                <div className="w-28 shrink-0 text-right text-sm text-zinc-300">
-                  {step.stage}
-                </div>
-                <div className="relative flex-1">
-                  <div
-                    className="h-8 rounded"
-                    style={{
-                      width: `${widthPct}%`,
-                      backgroundColor: `rgba(150, 191, 72, ${0.25 + (1 - i / (shopifyFunnel.length - 1)) * 0.55})`,
-                      minWidth: "2rem",
-                    }}
-                  />
-                  <div className="absolute inset-y-0 left-2 flex items-center">
-                    <span className="font-mono text-xs font-medium text-zinc-100">
-                      {step.value.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-                <div className="w-16 shrink-0 text-right">
-                  {step.rate !== null ? (
-                    <span className="font-mono text-xs text-zinc-400">
-                      {formatPercent(step.rate)}
-                    </span>
-                  ) : (
-                    <span className="font-mono text-xs text-zinc-600">—</span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
-          <span className="text-xs text-zinc-500">Overall conversion rate:</span>
-          <span className="font-mono text-sm font-medium text-zinc-200">
-            {formatPercent(
-              (shopifyFunnel[shopifyFunnel.length - 1].value / shopifyFunnel[0].value) * 100
-            )}
-          </span>
-        </div>
+        <p className="text-xs text-zinc-500">
+          Conversion funnel requires Shopify Analytics API (Plus plan). Session and funnel data is not available via the standard Admin API.
+        </p>
       </div>
 
-      {/* ── Customer Mix + Top Products ── */}
+      {/* ── Customer Mix + Daily Orders by Type ── */}
       <div className="grid grid-cols-2 gap-4">
         {/* Customer Mix */}
         <div className="rounded-lg border border-border bg-surface p-5">
@@ -494,6 +485,7 @@ export default function ShopifyPage() {
               <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
                 <th className="px-2 py-2">#</th>
                 <th className="px-2 py-2">Product</th>
+                <th className="px-2 py-2">SKU</th>
                 <th className="px-2 py-2 text-right">Revenue</th>
                 <th className="px-2 py-2 text-right">Units</th>
                 <th className="px-2 py-2 text-right">AOV</th>
@@ -501,15 +493,18 @@ export default function ShopifyPage() {
               </tr>
             </thead>
             <tbody>
-              {apiTopProducts.map((p, i) => (
+              {apiTopProducts.map((p, i) => {
+                const changePositive = p.change >= 0;
+                return (
                   <tr
-                    key={p.name}
+                    key={p.sku || p.name}
                     className="border-b border-border/50 transition-colors hover:bg-white/[0.02]"
                   >
                     <td className="px-2 py-2 font-mono text-xs text-zinc-500">
                       {i + 1}
                     </td>
                     <td className="px-2 py-2 font-medium text-zinc-200">{p.name}</td>
+                    <td className="px-2 py-2 font-mono text-xs text-zinc-500">{p.sku || "—"}</td>
                     <td className="px-2 py-2 text-right font-mono text-zinc-300">
                       {formatCurrency(p.revenue)}
                     </td>
@@ -519,11 +514,21 @@ export default function ShopifyPage() {
                     <td className="px-2 py-2 text-right font-mono text-zinc-300">
                       {formatCurrency(p.aov, 2)}
                     </td>
-                    <td className="px-2 py-2 text-right font-mono text-xs text-zinc-500">
-                      —
+                    <td
+                      className={clsx(
+                        "px-2 py-2 text-right font-mono text-xs",
+                        p.change === 0
+                          ? "text-zinc-500"
+                          : changePositive
+                          ? "text-emerald-400"
+                          : "text-red-400"
+                      )}
+                    >
+                      {p.change === 0 ? "—" : `${changePositive ? "+" : ""}${p.change}%`}
                     </td>
                   </tr>
-                ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -564,37 +569,45 @@ export default function ShopifyPage() {
             <h4 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
               LTV by Channel
             </h4>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
-                  <th className="px-3 py-2">Channel</th>
-                  <th className="px-3 py-2 text-right">LTV</th>
-                  <th className="px-3 py-2 text-right">LTV:CAC</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shopifyLTV.byChannel.map((ch) => (
-                  <tr
-                    key={ch.channel}
-                    className="border-b border-border/50 transition-colors hover:bg-white/[0.02]"
-                  >
-                    <td className="px-3 py-2 font-medium text-zinc-200">
-                      {ch.channel}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-zinc-300">
-                      {formatCurrency(ch.ltv, 2)}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-zinc-300">
-                      {ch.cacRatio === Infinity ? (
-                        <span className="text-emerald-400">&infin;</span>
-                      ) : (
-                        `${ch.cacRatio.toFixed(1)}x`
-                      )}
-                    </td>
+            {shopifyLTV.byChannel.length > 0 ? (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-zinc-500">
+                    <th className="px-3 py-2">Channel</th>
+                    <th className="px-3 py-2 text-right">LTV</th>
+                    <th className="px-3 py-2 text-right">LTV:CAC</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {shopifyLTV.byChannel.map((ch) => (
+                    <tr
+                      key={ch.channel}
+                      className="border-b border-border/50 transition-colors hover:bg-white/[0.02]"
+                    >
+                      <td className="px-3 py-2 font-medium text-zinc-200">
+                        {ch.channel}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                        {formatCurrency(ch.ltv, 2)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                        {ch.cacRatio === Infinity ? (
+                          <span className="text-emerald-400">&infin;</span>
+                        ) : (
+                          `${ch.cacRatio.toFixed(1)}x`
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="rounded-md border border-border bg-[#0A0A0B] px-4 py-6 text-center">
+                <p className="text-xs text-zinc-500">
+                  Channel LTV requires attribution data
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Repeat Purchase Stats */}
@@ -612,7 +625,9 @@ export default function ShopifyPage() {
               <div className="rounded-md border border-border bg-[#0A0A0B] p-3">
                 <p className="text-xs text-zinc-500">Avg Time Between</p>
                 <p className="mt-1 font-mono text-lg font-semibold text-zinc-100">
-                  {shopifyRepeatData.avgTimeBetween}d
+                  {shopifyRepeatData.avgTimeBetween !== null
+                    ? `${shopifyRepeatData.avgTimeBetween}d`
+                    : "N/A"}
                 </p>
               </div>
               <div className="rounded-md border border-border bg-[#0A0A0B] p-3">

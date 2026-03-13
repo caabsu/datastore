@@ -1,5 +1,18 @@
 import { NextResponse } from "next/server";
-import { getOrders, computeShopifyKPIs } from "@/lib/shopify";
+import {
+  getOrders,
+  getProducts,
+  getCustomers,
+  computeShopifyKPIs,
+  computeCustomerMix,
+  computeHourlyOrders,
+  computeGeoData,
+  computeCategories,
+  computeTopProducts,
+  computeLTV,
+  computeRepeatData,
+  computeCohortData,
+} from "@/lib/shopify";
 
 export async function GET(request: Request) {
   try {
@@ -13,19 +26,21 @@ export async function GET(request: Request) {
     const prevStartDate = new Date(startDate);
     prevStartDate.setDate(startDate.getDate() - days);
 
-    // Current period orders
-    const currentOrders = await getOrders({
-      created_at_min: startDate.toISOString(),
-      created_at_max: now.toISOString(),
-      status: "any",
-    });
-
-    // Previous period for comparison
-    const prevOrders = await getOrders({
-      created_at_min: prevStartDate.toISOString(),
-      created_at_max: startDate.toISOString(),
-      status: "any",
-    });
+    // Fetch all data in parallel: current orders, previous orders, products, customers
+    const [currentOrders, prevOrders, products, customers] = await Promise.all([
+      getOrders({
+        created_at_min: startDate.toISOString(),
+        created_at_max: now.toISOString(),
+        status: "any",
+      }),
+      getOrders({
+        created_at_min: prevStartDate.toISOString(),
+        created_at_max: startDate.toISOString(),
+        status: "any",
+      }),
+      getProducts({ limit: 250 }),
+      getCustomers({ limit: 250 }),
+    ]);
 
     const current = computeShopifyKPIs(currentOrders);
     const previous = computeShopifyKPIs(prevOrders);
@@ -62,28 +77,15 @@ export async function GET(request: Request) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, data]) => ({ date, ...data }));
 
-    // Product breakdown
-    const productMap = new Map<string, { revenue: number; units: number }>();
-    currentOrders
-      .filter((o) => o.financial_status === "paid" || o.financial_status === "partially_refunded")
-      .forEach((o) => {
-        o.line_items.forEach((li) => {
-          const key = li.title;
-          const entry = productMap.get(key) ?? { revenue: 0, units: 0 };
-          entry.revenue += parseFloat(li.price) * li.quantity;
-          entry.units += li.quantity;
-          productMap.set(key, entry);
-        });
-      });
-    const topProducts = Array.from(productMap.entries())
-      .map(([name, data]) => ({
-        name,
-        revenue: data.revenue,
-        units: data.units,
-        aov: data.units > 0 ? data.revenue / data.units : 0,
-      }))
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 10);
+    // Compute all additional data
+    const customerMix = computeCustomerMix(currentOrders);
+    const hourlyOrders = computeHourlyOrders(currentOrders);
+    const geoData = computeGeoData(currentOrders);
+    const shopifyCategories = computeCategories(currentOrders, products);
+    const topProducts = computeTopProducts(currentOrders);
+    const shopifyLTV = computeLTV(customers);
+    const shopifyRepeatData = computeRepeatData(currentOrders, customers);
+    const cohortData = computeCohortData(currentOrders);
 
     return NextResponse.json({
       kpis: {
@@ -97,6 +99,13 @@ export async function GET(request: Request) {
       dailyRevenue,
       dailyOrders,
       topProducts,
+      customerMix,
+      hourlyOrders,
+      geoData,
+      shopifyCategories,
+      shopifyLTV,
+      shopifyRepeatData,
+      cohortData,
       rawCount: currentOrders.length,
     });
   } catch (error) {

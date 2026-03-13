@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   getAccountInsights,
+  getAccountInsightsWithBreakdown,
   getCampaigns,
   getAdSets,
   getAds,
@@ -33,6 +34,8 @@ export async function GET(request: Request) {
           purchases: m.purchases,
           impressions: m.impressions,
           reach: m.reach,
+          hookRate: m.hookRate,
+          engagementDepth: m.engagementDepth,
         };
       });
 
@@ -94,6 +97,128 @@ export async function GET(request: Request) {
         };
       });
       return NextResponse.json({ ads: formatted });
+    }
+
+    if (level === "funnel") {
+      // Conversion funnel — account-level aggregate
+      const insights = await getAccountInsights({ date_preset: datePreset });
+      if (insights.length === 0) {
+        return NextResponse.json({ funnel: [] });
+      }
+
+      const m = computeInsightMetrics(insights[0]);
+
+      const stages: { stage: string; value: number; rate: number | null }[] = [];
+      const funnelData = [
+        { stage: "Impressions", value: m.impressions },
+        { stage: "Link Clicks", value: m.linkClicks },
+        { stage: "Add to Cart", value: m.addToCart },
+        { stage: "Initiate Checkout", value: m.initiateCheckout },
+        { stage: "Purchases", value: m.purchases },
+      ];
+
+      for (let i = 0; i < funnelData.length; i++) {
+        const { stage, value } = funnelData[i];
+        const rate =
+          i === 0 || funnelData[i - 1].value === 0
+            ? null
+            : +((value / funnelData[i - 1].value) * 100).toFixed(2);
+        stages.push({ stage, value, rate });
+      }
+
+      return NextResponse.json({ funnel: stages });
+    }
+
+    if (level === "creative_breakdown") {
+      // Fetch all ads with insights and group by creative type
+      const ads = await getAds({ date_preset: datePreset });
+
+      // Derive creative type from the creative object or ad name
+      function deriveCreativeType(ad: (typeof ads)[number]): string {
+        const name = ad.name?.toLowerCase() ?? "";
+        // Check name patterns first
+        if (name.includes("video") || name.includes("vid") || name.includes("ugc") || name.includes("reel")) return "Video";
+        if (name.includes("carousel") || name.includes("caro") || name.includes("dpa")) return "Carousel";
+        if (name.includes("image") || name.includes("img") || name.includes("static")) return "Image";
+        // Default heuristic — if creative has thumbnail it might be video, otherwise image
+        return "Image";
+      }
+
+      const typeColors: Record<string, string> = {
+        Video: "#1877F2",
+        Carousel: "#60A5FA",
+        Image: "#93C5FD",
+      };
+
+      const groups: Record<
+        string,
+        { count: number; spend: number; revenue: number; purchases: number }
+      > = {};
+
+      for (const ad of ads) {
+        const type = deriveCreativeType(ad);
+        const insight = ad.insights?.data?.[0];
+        const m = insight ? computeInsightMetrics(insight) : null;
+        if (!groups[type]) {
+          groups[type] = { count: 0, spend: 0, revenue: 0, purchases: 0 };
+        }
+        groups[type].count += 1;
+        groups[type].spend += m?.spend ?? 0;
+        groups[type].revenue += m?.revenue ?? 0;
+        groups[type].purchases += m?.purchases ?? 0;
+      }
+
+      const creativeBreakdown = Object.entries(groups).map(
+        ([type, data]) => ({
+          type,
+          count: data.count,
+          spend: +data.spend.toFixed(2),
+          revenue: +data.revenue.toFixed(2),
+          roas: data.spend > 0 ? +(data.revenue / data.spend).toFixed(2) : 0,
+          purchases: data.purchases,
+          cpa:
+            data.purchases > 0
+              ? +(data.spend / data.purchases).toFixed(2)
+              : 0,
+          cm: +(data.revenue - data.spend).toFixed(2),
+          color: typeColors[type] ?? "#71717A",
+        })
+      );
+
+      return NextResponse.json({ creativeBreakdown });
+    }
+
+    if (level === "audience_breakdown") {
+      // Fetch account insights broken down by age group
+      const insights = await getAccountInsightsWithBreakdown({
+        date_preset: datePreset,
+        breakdowns: "age",
+      });
+
+      const ageColors: Record<string, string> = {
+        "18-24": "#1877F2",
+        "25-34": "#3B82F6",
+        "35-44": "#60A5FA",
+        "45-54": "#93C5FD",
+        "55-64": "#BFDBFE",
+        "65+": "#DBEAFE",
+      };
+
+      const audienceBreakdown = insights.map((insight) => {
+        const m = computeInsightMetrics(insight);
+        const ageGroup = insight.age ?? "Unknown";
+        return {
+          audience: ageGroup,
+          spend: +m.spend.toFixed(2),
+          revenue: +m.revenue.toFixed(2),
+          roas: m.roas ? +m.roas.toFixed(2) : 0,
+          purchases: m.purchases,
+          reachCPM: +m.reachCPM.toFixed(2),
+          color: ageColors[ageGroup] ?? "#71717A",
+        };
+      });
+
+      return NextResponse.json({ audienceBreakdown });
     }
 
     return NextResponse.json({ error: "Invalid level" }, { status: 400 });

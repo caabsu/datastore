@@ -3,13 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import KPICard from "@/components/cards/KPICard";
 import {
-  metaKPIs as mockKPIs,
-  metaCreativeBreakdown,
-  metaAudienceBreakdown,
-  metaFunnel,
-} from "@/lib/mock-data";
-import type { MetaAdSet } from "@/lib/mock-data";
-import {
   formatCurrency,
   formatPercent,
   formatMultiplier,
@@ -44,6 +37,8 @@ interface AccountKPIs {
   cpc: number;
   cpm: number;
   reachCPM: number;
+  hookRate: number;
+  engagementDepth: number;
 }
 
 interface DailyTrendPoint {
@@ -54,6 +49,36 @@ interface DailyTrendPoint {
   purchases: number;
   impressions: number;
   reach: number;
+  hookRate: number;
+  engagementDepth: number;
+}
+
+interface FunnelStage {
+  stage: string;
+  value: number;
+  rate: number | null;
+}
+
+interface CreativeBreakdownRow {
+  type: string;
+  count: number;
+  spend: number;
+  revenue: number;
+  roas: number;
+  purchases: number;
+  cpa: number;
+  cm: number;
+  color: string;
+}
+
+interface AudienceBreakdownRow {
+  audience: string;
+  spend: number;
+  revenue: number;
+  roas: number;
+  purchases: number;
+  reachCPM: number;
+  color: string;
 }
 
 interface APICampaign {
@@ -149,7 +174,7 @@ function FatigueIndicator({ score }: { score: number }) {
   );
 }
 
-function AudienceTypeBadge({ type }: { type: MetaAdSet['audienceType'] }) {
+function AudienceTypeBadge({ type }: { type: string }) {
   const styles: Record<string, string> = {
     Broad: "bg-blue-500/10 text-blue-400",
     Lookalike: "bg-purple-500/10 text-purple-400",
@@ -211,6 +236,9 @@ export default function MetaOverviewPage() {
   const [accountKPIs, setAccountKPIs] = useState<AccountKPIs | null>(null);
   const [dailyTrend, setDailyTrend] = useState<DailyTrendPoint[]>([]);
   const [campaigns, setCampaigns] = useState<APICampaign[]>([]);
+  const [funnel, setFunnel] = useState<FunnelStage[]>([]);
+  const [creativeBreakdown, setCreativeBreakdown] = useState<CreativeBreakdownRow[]>([]);
+  const [audienceBreakdown, setAudienceBreakdown] = useState<AudienceBreakdownRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -230,9 +258,12 @@ export default function MetaOverviewPage() {
       setLoading(true);
       setError(null);
       try {
-        const [accountRes, campaignsRes] = await Promise.all([
+        const [accountRes, campaignsRes, funnelRes, creativeRes, audienceRes] = await Promise.all([
           fetch("/api/meta?level=account"),
           fetch("/api/meta?level=campaigns"),
+          fetch("/api/meta?level=funnel"),
+          fetch("/api/meta?level=creative_breakdown"),
+          fetch("/api/meta?level=audience_breakdown"),
         ]);
 
         if (!accountRes.ok) throw new Error(`Account API error: ${accountRes.status}`);
@@ -240,10 +271,16 @@ export default function MetaOverviewPage() {
 
         const accountData = await accountRes.json();
         const campaignsData = await campaignsRes.json();
+        const funnelData = funnelRes.ok ? await funnelRes.json() : { funnel: [] };
+        const creativeData = creativeRes.ok ? await creativeRes.json() : { creativeBreakdown: [] };
+        const audienceData = audienceRes.ok ? await audienceRes.json() : { audienceBreakdown: [] };
 
         setAccountKPIs(accountData.kpis);
         setDailyTrend(accountData.dailyTrend ?? []);
         setCampaigns(campaignsData.campaigns ?? []);
+        setFunnel(funnelData.funnel ?? []);
+        setCreativeBreakdown(creativeData.creativeBreakdown ?? []);
+        setAudienceBreakdown(audienceData.audienceBreakdown ?? []);
       } catch (err) {
         console.error("Failed to fetch Meta data:", err);
         setError(err instanceof Error ? err.message : "Failed to load Meta data");
@@ -365,12 +402,14 @@ export default function MetaOverviewPage() {
 
   /* ── Derive KPI card values ── */
   // Row 1: Spend, Revenue, ROAS, Purchases — all from live API
-  // Row 2: CPA from live, Incr. ROAS / Hook Rate / Engagement Depth from mock (not yet in API)
+  // Row 2: CPA, Hook Rate, Engagement Depth — all from live API
   const spendValue = accountKPIs?.spend ?? 0;
   const revenueValue = accountKPIs?.revenue ?? 0;
   const roasValue = accountKPIs?.roas ?? 0;
   const purchasesValue = accountKPIs?.purchases ?? 0;
   const cpaValue = accountKPIs?.cpa ?? 0;
+  const hookRateValue = accountKPIs?.hookRate ?? 0;
+  const engagementDepthValue = accountKPIs?.engagementDepth ?? 0;
 
   // Build sparklines from dailyTrend for Row 1 KPIs
   const spendSparkline = dailyTrend.map((d) => d.spend);
@@ -381,6 +420,8 @@ export default function MetaOverviewPage() {
   const cpaSparkline = dailyTrend.map((d) =>
     d.purchases > 0 ? +(d.spend / d.purchases).toFixed(2) : 0
   );
+  const hookRateSparkline = dailyTrend.map((d) => d.hookRate ?? 0);
+  const engagementDepthSparkline = dailyTrend.map((d) => d.engagementDepth ?? 0);
 
   // Compute change % from sparklines (last 7 vs previous 7 from 28-day data)
   function computeChange(data: number[]): number {
@@ -398,6 +439,8 @@ export default function MetaOverviewPage() {
   const roasChange = computeChange(roasSparkline);
   const purchasesChange = computeChange(purchasesSparkline);
   const cpaChange = computeChange(cpaSparkline);
+  const hookRateChange = computeChange(hookRateSparkline);
+  const engagementDepthChange = computeChange(engagementDepthSparkline);
 
   /* ── Account totals from live campaign data ── */
   const accountTotals = {
@@ -409,7 +452,7 @@ export default function MetaOverviewPage() {
   accountTotals.roas =
     accountTotals.spend > 0 ? accountTotals.revenue / accountTotals.spend : 0;
 
-  const funnelMax = metaFunnel[0].value;
+  const funnelMax = funnel.length > 0 ? funnel[0].value : 1;
 
   return (
     <div className="space-y-6">
@@ -456,7 +499,7 @@ export default function MetaOverviewPage() {
       </div>
 
       {/* ── KPI Cards Row 2 ── */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <KPICard
           title="CPA"
           value={formatCurrency(cpaValue, 2)}
@@ -466,24 +509,17 @@ export default function MetaOverviewPage() {
           tooltip={META_TOOLTIPS.cpa}
         />
         <KPICard
-          title="Incr. ROAS"
-          value={formatMultiplier(mockKPIs.incrROAS.value)}
-          change={mockKPIs.incrROAS.change}
-          sparkline={mockKPIs.incrROAS.sparkline}
-          tooltip={META_TOOLTIPS.incrROAS}
-        />
-        <KPICard
           title="Avg Hook Rate"
-          value={formatPercent(mockKPIs.hookRate.value)}
-          change={mockKPIs.hookRate.change}
-          sparkline={mockKPIs.hookRate.sparkline}
+          value={formatPercent(hookRateValue)}
+          change={hookRateChange}
+          sparkline={hookRateSparkline}
           tooltip={META_TOOLTIPS.hookRate}
         />
         <KPICard
           title="Avg Engagement Depth"
-          value={mockKPIs.engagementDepth.value.toFixed(1)}
-          change={mockKPIs.engagementDepth.change}
-          sparkline={mockKPIs.engagementDepth.sparkline}
+          value={engagementDepthValue.toFixed(1)}
+          change={engagementDepthChange}
+          sparkline={engagementDepthSparkline}
           tooltip={META_TOOLTIPS.engagementDepth}
         />
       </div>
@@ -637,6 +673,7 @@ export default function MetaOverviewPage() {
           <h3 className="text-sm font-medium text-zinc-400 mb-4">
             Creative Type Performance
           </h3>
+          {creativeBreakdown.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -652,7 +689,7 @@ export default function MetaOverviewPage() {
                 </tr>
               </thead>
               <tbody>
-                {metaCreativeBreakdown.map((row) => (
+                {creativeBreakdown.map((row) => (
                   <tr
                     key={row.type}
                     className="border-b border-border/50 data-row transition-colors"
@@ -700,56 +737,62 @@ export default function MetaOverviewPage() {
                 <tr className="border-t-2 border-border font-semibold">
                   <td className="px-2 py-2.5 text-foreground">Total</td>
                   <td className="px-2 py-2.5 text-right font-mono text-zinc-400">
-                    {metaCreativeBreakdown.reduce((s, r) => s + r.count, 0)}
+                    {creativeBreakdown.reduce((s, r) => s + r.count, 0)}
                   </td>
                   <td className="px-2 py-2.5 text-right font-mono">
                     {formatCurrency(
-                      metaCreativeBreakdown.reduce((s, r) => s + r.spend, 0)
+                      creativeBreakdown.reduce((s, r) => s + r.spend, 0)
                     )}
                   </td>
                   <td className="px-2 py-2.5 text-right font-mono">
                     {formatCurrency(
-                      metaCreativeBreakdown.reduce((s, r) => s + r.revenue, 0)
+                      creativeBreakdown.reduce((s, r) => s + r.revenue, 0)
                     )}
                   </td>
                   <td className="px-2 py-2.5 text-right font-mono font-medium">
                     {formatMultiplier(
-                      metaCreativeBreakdown.reduce((s, r) => s + r.revenue, 0) /
-                        metaCreativeBreakdown.reduce((s, r) => s + r.spend, 0)
+                      creativeBreakdown.reduce((s, r) => s + r.spend, 0) > 0
+                        ? creativeBreakdown.reduce((s, r) => s + r.revenue, 0) /
+                            creativeBreakdown.reduce((s, r) => s + r.spend, 0)
+                        : 0
                     )}
                   </td>
                   <td className="px-2 py-2.5 text-right font-mono">
-                    {metaCreativeBreakdown.reduce(
+                    {creativeBreakdown.reduce(
                       (s, r) => s + r.purchases,
                       0
                     )}
                   </td>
                   <td className="px-2 py-2.5 text-right font-mono">
                     {formatCurrency(
-                      metaCreativeBreakdown.reduce((s, r) => s + r.spend, 0) /
-                        metaCreativeBreakdown.reduce(
-                          (s, r) => s + r.purchases,
-                          0
-                        ),
+                      creativeBreakdown.reduce((s, r) => s + r.purchases, 0) > 0
+                        ? creativeBreakdown.reduce((s, r) => s + r.spend, 0) /
+                            creativeBreakdown.reduce((s, r) => s + r.purchases, 0)
+                        : 0,
                       2
                     )}
                   </td>
                   <td
                     className={clsx(
                       "px-2 py-2.5 text-right font-mono",
-                      metaCreativeBreakdown.reduce((s, r) => s + r.cm, 0) >= 0
+                      creativeBreakdown.reduce((s, r) => s + r.cm, 0) >= 0
                         ? "text-emerald-400"
                         : "text-red-400"
                     )}
                   >
                     {formatCurrency(
-                      metaCreativeBreakdown.reduce((s, r) => s + r.cm, 0)
+                      creativeBreakdown.reduce((s, r) => s + r.cm, 0)
                     )}
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
+          ) : (
+            <div className="flex items-center justify-center h-[120px] text-sm text-zinc-500">
+              No creative breakdown data available
+            </div>
+          )}
         </div>
 
         {/* Audience Performance */}
@@ -757,6 +800,7 @@ export default function MetaOverviewPage() {
           <h3 className="text-sm font-medium text-zinc-400 mb-4">
             Audience Performance
           </h3>
+          {audienceBreakdown.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -767,11 +811,10 @@ export default function MetaOverviewPage() {
                   <th className="px-2 py-2 text-right">ROAS</th>
                   <th className="px-2 py-2 text-right">Purch.</th>
                   <th className="px-2 py-2 text-right">Reach CPM</th>
-                  <th className="px-2 py-2 text-right">Incr. %</th>
                 </tr>
               </thead>
               <tbody>
-                {metaAudienceBreakdown.map((row) => (
+                {audienceBreakdown.map((row) => (
                   <tr
                     key={row.audience}
                     className="border-b border-border/50 data-row transition-colors"
@@ -802,13 +845,6 @@ export default function MetaOverviewPage() {
                     <td className="px-2 py-2.5 text-right font-mono">
                       {formatCurrency(row.reachCPM, 2)}
                     </td>
-                    <td className="px-2 py-2.5 text-right font-mono">
-                      {row.incrReach !== null ? (
-                        formatPercent(row.incrReach)
-                      ) : (
-                        <span className="text-zinc-600">—</span>
-                      )}
-                    </td>
                   </tr>
                 ))}
                 {/* Totals */}
@@ -816,28 +852,27 @@ export default function MetaOverviewPage() {
                   <td className="px-2 py-2.5 text-foreground">Total</td>
                   <td className="px-2 py-2.5 text-right font-mono">
                     {formatCurrency(
-                      metaAudienceBreakdown.reduce((s, r) => s + r.spend, 0)
+                      audienceBreakdown.reduce((s, r) => s + r.spend, 0)
                     )}
                   </td>
                   <td className="px-2 py-2.5 text-right font-mono">
                     {formatCurrency(
-                      metaAudienceBreakdown.reduce((s, r) => s + r.revenue, 0)
+                      audienceBreakdown.reduce((s, r) => s + r.revenue, 0)
                     )}
                   </td>
                   <td className="px-2 py-2.5 text-right font-mono font-medium">
                     {formatMultiplier(
-                      metaAudienceBreakdown.reduce((s, r) => s + r.revenue, 0) /
-                        metaAudienceBreakdown.reduce((s, r) => s + r.spend, 0)
+                      audienceBreakdown.reduce((s, r) => s + r.spend, 0) > 0
+                        ? audienceBreakdown.reduce((s, r) => s + r.revenue, 0) /
+                            audienceBreakdown.reduce((s, r) => s + r.spend, 0)
+                        : 0
                     )}
                   </td>
                   <td className="px-2 py-2.5 text-right font-mono">
-                    {metaAudienceBreakdown.reduce(
+                    {audienceBreakdown.reduce(
                       (s, r) => s + r.purchases,
                       0
                     )}
-                  </td>
-                  <td className="px-2 py-2.5 text-right font-mono text-zinc-500">
-                    —
                   </td>
                   <td className="px-2 py-2.5 text-right font-mono text-zinc-500">
                     —
@@ -846,6 +881,11 @@ export default function MetaOverviewPage() {
               </tbody>
             </table>
           </div>
+          ) : (
+            <div className="flex items-center justify-center h-[120px] text-sm text-zinc-500">
+              No audience breakdown data available
+            </div>
+          )}
         </div>
       </div>
 
@@ -854,8 +894,9 @@ export default function MetaOverviewPage() {
         <h3 className="text-sm font-medium text-zinc-400 mb-4">
           Conversion Funnel — Account Aggregated
         </h3>
+        {funnel.length > 0 ? (
         <div className="space-y-2.5">
-          {metaFunnel.map((stage, i) => {
+          {funnel.map((stage, i) => {
             const barWidth = (stage.value / funnelMax) * 100;
             return (
               <div key={stage.stage} className="flex items-center gap-3">
@@ -896,6 +937,11 @@ export default function MetaOverviewPage() {
             );
           })}
         </div>
+        ) : (
+          <div className="flex items-center justify-center h-[120px] text-sm text-zinc-500">
+            No funnel data available
+          </div>
+        )}
         <p className="mt-3 text-[11px] text-zinc-600 italic">
           Rates shown are stage-to-stage conversion rates.
         </p>
