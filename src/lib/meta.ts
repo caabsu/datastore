@@ -208,13 +208,18 @@ export async function getCampaigns(params?: {
 export async function getAdSets(params?: {
   campaignId?: string;
   date_preset?: string;
+  time_range?: { since: string; until: string };
 }): Promise<MetaAdSetRaw[]> {
   const endpoint = params?.campaignId
     ? `/${params.campaignId}/adsets`
     : `/${AD_ACCOUNT_ID}/adsets`;
 
+  const insightDateClause = params?.time_range
+    ? `.time_range(${JSON.stringify(params.time_range)})`
+    : `.date_preset(${params?.date_preset ?? "last_7d"})`;
+
   const queryParams: Record<string, string> = {
-    fields: `id,name,campaign_id,status,targeting,daily_budget,lifetime_budget,optimization_goal,insights.fields(${INSIGHT_FIELDS}).date_preset(${params?.date_preset ?? "last_7d"})`,
+    fields: `id,name,campaign_id,status,targeting,daily_budget,lifetime_budget,optimization_goal,insights.fields(${INSIGHT_FIELDS})${insightDateClause}`,
     limit: "200",
   };
 
@@ -225,13 +230,18 @@ export async function getAdSets(params?: {
 export async function getAds(params?: {
   adSetId?: string;
   date_preset?: string;
+  time_range?: { since: string; until: string };
 }): Promise<MetaAdRaw[]> {
   const endpoint = params?.adSetId
     ? `/${params.adSetId}/ads`
     : `/${AD_ACCOUNT_ID}/ads`;
 
+  const insightDateClause = params?.time_range
+    ? `.time_range(${JSON.stringify(params.time_range)})`
+    : `.date_preset(${params?.date_preset ?? "last_7d"})`;
+
   const queryParams: Record<string, string> = {
-    fields: `id,name,adset_id,campaign_id,status,creative{id,title,body,thumbnail_url},insights.fields(${INSIGHT_FIELDS}).date_preset(${params?.date_preset ?? "last_7d"})`,
+    fields: `id,name,adset_id,campaign_id,status,creative{id,title,body,thumbnail_url},insights.fields(${INSIGHT_FIELDS})${insightDateClause}`,
     limit: "200",
   };
 
