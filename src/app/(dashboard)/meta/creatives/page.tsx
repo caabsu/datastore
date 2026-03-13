@@ -269,7 +269,7 @@ function TableSkeleton() {
 /* ───────── Component ───────── */
 
 export default function CreativeAnalysisPage() {
-  const { days, refreshKey } = useDashboard();
+  const { startISO, endISO, refreshKey } = useDashboard();
   const [creatives, setCreatives] = useState<CreativeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -279,8 +279,7 @@ export default function CreativeAnalysisPage() {
       try {
         setLoading(true);
         setError(null);
-        const datePreset = days <= 1 ? "today" : days <= 7 ? "last_7d" : days <= 14 ? "last_14d" : "last_28d";
-        const res = await fetch(`/api/meta?level=ads&date_preset=${datePreset}`);
+        const res = await fetch(`/api/meta?level=ads&start=${startISO}&end=${endISO}`);
         if (!res.ok) {
           throw new Error(`API returned ${res.status}: ${res.statusText}`);
         }
@@ -298,7 +297,7 @@ export default function CreativeAnalysisPage() {
       }
     }
     fetchAds();
-  }, [days, refreshKey]);
+  }, [startISO, endISO, refreshKey]);
 
   // Sort by score descending
   const sorted = [...creatives].sort((a, b) => b.score - a.score);

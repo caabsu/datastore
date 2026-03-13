@@ -4,11 +4,21 @@ import { getOrders, getProducts } from "@/lib/shopify";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const days = parseInt(searchParams.get("days") ?? "28");
 
-    const now = new Date();
-    const startDate = new Date(now);
-    startDate.setDate(now.getDate() - days);
+    const startParam = searchParams.get("start");
+    const endParam = searchParams.get("end");
+    let now: Date;
+    let startDate: Date;
+
+    if (startParam && endParam) {
+      startDate = new Date(startParam);
+      now = new Date(endParam);
+    } else {
+      const days = parseInt(searchParams.get("days") ?? "28");
+      now = new Date();
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - days);
+    }
 
     const [orders, products] = await Promise.all([
       getOrders({
@@ -68,7 +78,8 @@ export async function GET(request: Request) {
       .map(([productId, data]) => {
         const inv = inventoryMap.get(productId);
         const inventory = inv?.inventory ?? 0;
-        const dailySellRate = days > 0 ? data.units / days : 0;
+        const rangeDays = Math.max(1, Math.round((now.getTime() - startDate.getTime()) / 86_400_000));
+        const dailySellRate = rangeDays > 0 ? data.units / rangeDays : 0;
         const daysOfStock =
           dailySellRate > 0 ? Math.round(inventory / dailySellRate) : null;
 

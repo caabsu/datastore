@@ -303,7 +303,7 @@ function LoadingSkeleton() {
 
 /* ── Page ── */
 export default function ProfitabilityPage() {
-  const { days, refreshKey } = useDashboard();
+  const { days, startISO, endISO, refreshKey } = useDashboard();
   const [data, setData] = useState<ProfitabilityResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -315,7 +315,7 @@ export default function ProfitabilityPage() {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/api/profitability?days=${days}`);
+        const res = await fetch(`/api/profitability?start=${startISO}&end=${endISO}`);
         if (!res.ok) {
           throw new Error(`Failed to load profitability data (${res.status})`);
         }
@@ -338,7 +338,7 @@ export default function ProfitabilityPage() {
     return () => {
       cancelled = true;
     };
-  }, [days, refreshKey]);
+  }, [startISO, endISO, refreshKey]);
 
   if (loading) {
     return <LoadingSkeleton />;

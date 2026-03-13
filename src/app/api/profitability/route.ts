@@ -14,11 +14,23 @@ const DEFAULTS = {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const days = parseInt(searchParams.get("days") ?? "7");
 
-    const now = new Date();
-    const startDate = new Date(now);
-    startDate.setDate(now.getDate() - days);
+    const startParam = searchParams.get("start");
+    const endParam = searchParams.get("end");
+    let now: Date;
+    let startDate: Date;
+
+    if (startParam && endParam) {
+      startDate = new Date(startParam);
+      now = new Date(endParam);
+    } else {
+      const d = parseInt(searchParams.get("days") ?? "7");
+      now = new Date();
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - d);
+    }
+
+    const days = Math.max(1, Math.round((now.getTime() - startDate.getTime()) / 86_400_000));
     const prevStart = new Date(startDate);
     prevStart.setDate(startDate.getDate() - days);
 

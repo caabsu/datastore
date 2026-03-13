@@ -11,13 +11,32 @@ import {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const datePreset = searchParams.get("date_preset") ?? "last_7d";
     const level = searchParams.get("level") ?? "account"; // account | campaigns | adsets | ads
+
+    // Support start/end ISO strings or date_preset
+    const startParam = searchParams.get("start");
+    const endParam = searchParams.get("end");
+    let datePreset: string | undefined;
+    let timeRange: { since: string; until: string } | undefined;
+
+    if (startParam && endParam) {
+      timeRange = {
+        since: startParam.substring(0, 10),
+        until: endParam.substring(0, 10),
+      };
+    } else {
+      datePreset = searchParams.get("date_preset") ?? "last_7d";
+    }
+
+    // Helper to build the date params for Meta API calls
+    const dateParams = timeRange
+      ? { time_range: timeRange }
+      : { date_preset: datePreset! };
 
     if (level === "account") {
       // Account-level KPIs
       const [insights, dailyInsights] = await Promise.all([
-        getAccountInsights({ date_preset: datePreset }),
+        getAccountInsights(dateParams),
         getAccountInsights({ date_preset: "last_28d", time_increment: "1" }),
       ]);
 
@@ -43,7 +62,7 @@ export async function GET(request: Request) {
     }
 
     if (level === "campaigns") {
-      const campaigns = await getCampaigns({ date_preset: datePreset });
+      const campaigns = await getCampaigns(dateParams);
       const formatted = campaigns.map((c) => {
         const insight = c.insights?.data?.[0];
         const metrics = insight ? computeInsightMetrics(insight) : null;
@@ -62,7 +81,7 @@ export async function GET(request: Request) {
 
     if (level === "adsets") {
       const campaignId = searchParams.get("campaign_id") ?? undefined;
-      const adSets = await getAdSets({ campaignId, date_preset: datePreset });
+      const adSets = await getAdSets({ campaignId, ...dateParams });
       const formatted = adSets.map((s) => {
         const insight = s.insights?.data?.[0];
         const metrics = insight ? computeInsightMetrics(insight) : null;
@@ -82,7 +101,7 @@ export async function GET(request: Request) {
 
     if (level === "ads") {
       const adSetId = searchParams.get("adset_id") ?? undefined;
-      const ads = await getAds({ adSetId, date_preset: datePreset });
+      const ads = await getAds({ adSetId, ...dateParams });
       const formatted = ads.map((a) => {
         const insight = a.insights?.data?.[0];
         const metrics = insight ? computeInsightMetrics(insight) : null;
@@ -101,7 +120,7 @@ export async function GET(request: Request) {
 
     if (level === "funnel") {
       // Conversion funnel — account-level aggregate
-      const insights = await getAccountInsights({ date_preset: datePreset });
+      const insights = await getAccountInsights(dateParams);
       if (insights.length === 0) {
         return NextResponse.json({ funnel: [] });
       }
@@ -131,7 +150,7 @@ export async function GET(request: Request) {
 
     if (level === "creative_breakdown") {
       // Fetch all ads with insights and group by creative type
-      const ads = await getAds({ date_preset: datePreset });
+      const ads = await getAds(dateParams);
 
       // Derive creative type from the creative object or ad name
       function deriveCreativeType(ad: (typeof ads)[number]): string {
@@ -191,7 +210,7 @@ export async function GET(request: Request) {
     if (level === "audience_breakdown") {
       // Fetch account insights broken down by age group
       const insights = await getAccountInsightsWithBreakdown({
-        date_preset: datePreset,
+        ...dateParams,
         breakdowns: "age",
       });
 

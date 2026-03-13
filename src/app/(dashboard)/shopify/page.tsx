@@ -66,6 +66,10 @@ interface ShopifyAPIResponse {
   }[];
 }
 
+function fmtDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function formatDollar(value: number): string {
   if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `$${(value / 1_000).toFixed(0)}K`;
@@ -99,10 +103,12 @@ const SHOPIFY_TOOLTIPS: Record<string, string> = {
 };
 
 export default function ShopifyPage() {
-  const { days, refreshKey, setSyncing } = useDashboard();
+  const { days, startISO, endISO, refreshKey, setSyncing } = useDashboard();
   const [data, setData] = useState<ShopifyAPIResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [returnsData, setReturnsData] = useState<any>(null);
+  const [returnsLoading, setReturnsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,7 +116,7 @@ export default function ShopifyPage() {
     async function fetchData() {
       setSyncing(true);
       try {
-        const res = await fetch(`/api/shopify?days=${days}`);
+        const res = await fetch(`/api/shopify?start=${startISO}&end=${endISO}`);
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body.error ?? `API error: ${res.status}`);
@@ -132,7 +138,22 @@ export default function ShopifyPage() {
 
     fetchData();
     return () => { cancelled = true; };
-  }, [days, refreshKey, setSyncing]);
+  }, [startISO, endISO, refreshKey, setSyncing]);
+
+  useEffect(() => {
+    async function fetchReturns() {
+      setReturnsLoading(true);
+      try {
+        const res = await fetch(`/api/shopify/returns?start=${startISO}&end=${endISO}`);
+        if (res.ok) setReturnsData(await res.json());
+      } catch (err) {
+        console.error("Returns fetch error:", err);
+      } finally {
+        setReturnsLoading(false);
+      }
+    }
+    fetchReturns();
+  }, [startISO, endISO, refreshKey]);
 
   if (loading) {
     return (
@@ -822,6 +843,470 @@ export default function ShopifyPage() {
           </table>
         </div>
       </div>
+
+      {/* ════════════════════════════════════════════════════════════════
+          ── Returns & Disputes ──
+          ════════════════════════════════════════════════════════════════ */}
+      {returnsLoading ? (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-border bg-surface p-5">
+            <div className="mb-4 h-5 w-48 animate-pulse rounded bg-zinc-800" />
+            <div className="grid grid-cols-4 gap-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="rounded-md border border-border bg-[#0A0A0B] p-4">
+                  <div className="mb-2 h-3 w-24 animate-pulse rounded bg-zinc-800" />
+                  <div className="h-7 w-20 animate-pulse rounded bg-zinc-800" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-surface p-5">
+            <div className="mb-4 h-5 w-40 animate-pulse rounded bg-zinc-800" />
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex gap-4">
+                  <div className="h-4 flex-1 animate-pulse rounded bg-zinc-800" />
+                  <div className="h-4 w-16 animate-pulse rounded bg-zinc-800" />
+                  <div className="h-4 w-16 animate-pulse rounded bg-zinc-800" />
+                  <div className="h-4 w-20 animate-pulse rounded bg-zinc-800" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-surface p-5">
+            <div className="mb-4 h-5 w-44 animate-pulse rounded bg-zinc-800" />
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex gap-4">
+                  <div className="h-4 w-20 animate-pulse rounded bg-zinc-800" />
+                  <div className="h-4 flex-1 animate-pulse rounded bg-zinc-800" />
+                  <div className="h-4 w-24 animate-pulse rounded bg-zinc-800" />
+                  <div className="h-4 w-16 animate-pulse rounded bg-zinc-800" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : returnsData ? (
+        <div className="space-y-4">
+          {/* ── Returns Overview KPI Cards ── */}
+          <div className="rounded-lg border border-border bg-surface p-5">
+            <h3 className="mb-4 text-sm font-medium text-foreground">
+              Returns & Disputes
+            </h3>
+            <div className="grid grid-cols-4 gap-4">
+              <div className="rounded-md border border-border bg-[#0A0A0B] p-4">
+                <p className="text-xs uppercase tracking-wide text-muted">Total Refunds</p>
+                <p className="mt-1 font-mono text-2xl font-semibold text-zinc-100">
+                  {returnsData.analytics.totalRefundOrders}
+                </p>
+                <p className="mt-0.5 font-mono text-xs text-zinc-500">
+                  {formatPercent(returnsData.analytics.refundRate)} refund rate
+                </p>
+              </div>
+              <div className="rounded-md border border-border bg-[#0A0A0B] p-4">
+                <p className="text-xs uppercase tracking-wide text-muted">Refund Amount</p>
+                <p className="mt-1 font-mono text-2xl font-semibold text-zinc-100">
+                  {formatCurrency(returnsData.analytics.totalRefundAmount)}
+                </p>
+                <p className="mt-0.5 font-mono text-xs text-zinc-500">
+                  {returnsData.analytics.totalRefundedUnits} units returned
+                </p>
+              </div>
+              <div className="rounded-md border border-border bg-[#0A0A0B] p-4">
+                <p className="text-xs uppercase tracking-wide text-muted">Avg Refund Value</p>
+                <p className="mt-1 font-mono text-2xl font-semibold text-zinc-100">
+                  {formatCurrency(returnsData.analytics.avgRefundValue, 2)}
+                </p>
+              </div>
+              <div className="rounded-md border border-border bg-[#0A0A0B] p-4">
+                <p className="text-xs uppercase tracking-wide text-muted">Full vs Partial</p>
+                <p className="mt-1 font-mono text-2xl font-semibold text-zinc-100">
+                  {returnsData.analytics.fullRefunds}{" "}
+                  <span className="text-sm font-normal text-zinc-500">Full</span>{" / "}
+                  {returnsData.analytics.partialRefunds}{" "}
+                  <span className="text-sm font-normal text-zinc-500">Partial</span>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Returns by Product ── */}
+          {returnsData.byProduct && returnsData.byProduct.length > 0 && (
+            <div className="rounded-lg border border-border bg-surface p-5">
+              <h3 className="mb-4 text-sm font-medium text-foreground">
+                Returns by Product
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted">
+                      <th className="px-3 py-2">Product</th>
+                      <th className="px-3 py-2">SKU</th>
+                      <th className="px-3 py-2 text-right">Units Sold</th>
+                      <th className="px-3 py-2 text-right">Units Returned</th>
+                      <th className="px-3 py-2 text-right">Return Rate</th>
+                      <th className="px-3 py-2 text-right">Refund Amount</th>
+                      <th className="px-3 py-2 text-right">Orders</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...returnsData.byProduct]
+                      .sort((a: any, b: any) => b.refundAmount - a.refundAmount)
+                      .map((p: any) => (
+                        <tr
+                          key={p.sku || p.product}
+                          className="border-b border-border/50 transition-colors hover:bg-white/[0.02]"
+                        >
+                          <td className="max-w-[240px] truncate px-3 py-2 font-medium text-zinc-200">
+                            {p.product}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs text-zinc-500">
+                            {p.sku || "\u2014"}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                            {p.unitsSold.toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                            {p.unitsReturned.toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <span
+                              className={clsx(
+                                "inline-block rounded px-1.5 py-0.5 font-mono text-xs font-medium",
+                                p.returnRate > 15
+                                  ? "bg-red-500/10 text-red-400"
+                                  : p.returnRate > 8
+                                  ? "bg-amber-500/10 text-amber-400"
+                                  : "bg-emerald-500/10 text-emerald-400"
+                              )}
+                            >
+                              {formatPercent(p.returnRate)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                            {formatCurrency(p.refundAmount)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-xs text-zinc-400">
+                            {p.orderNumbers?.length ?? 0}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ── Refunded Orders Detail ── */}
+          {returnsData.refundedOrders && returnsData.refundedOrders.length > 0 && (
+            <div className="rounded-lg border border-border bg-surface p-5">
+              <h3 className="mb-4 text-sm font-medium text-foreground">
+                Refunded Orders
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted">
+                      <th className="px-3 py-2">Order #</th>
+                      <th className="px-3 py-2">Date</th>
+                      <th className="px-3 py-2">Customer</th>
+                      <th className="px-3 py-2 text-right">Order Total</th>
+                      <th className="px-3 py-2 text-right">Refund Amount</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {returnsData.refundedOrders.map((o: any) => (
+                      <tr
+                        key={o.orderId}
+                        className="border-b border-border/50 transition-colors hover:bg-white/[0.02]"
+                      >
+                        <td className="px-3 py-2 font-mono text-xs text-zinc-200">
+                          {o.orderNumber}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className="text-sm text-zinc-200">
+                            {fmtDate(o.orderDate)}
+                          </span>
+                          {o.refundDate && (
+                            <span className="ml-1.5 text-xs text-zinc-500">
+                              (refund {fmtDate(o.refundDate)})
+                            </span>
+                          )}
+                        </td>
+                        <td className="max-w-[160px] truncate px-3 py-2 text-zinc-300">
+                          {o.customer}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                          {formatCurrency(o.orderTotal)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                          {formatCurrency(o.refundAmount)}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={clsx(
+                              "inline-block rounded px-1.5 py-0.5 text-xs font-medium",
+                              o.financialStatus === "refunded"
+                                ? "bg-red-500/10 text-red-400"
+                                : "bg-amber-500/10 text-amber-400"
+                            )}
+                          >
+                            {o.financialStatus}
+                          </span>
+                        </td>
+                        <td className="max-w-[200px] truncate px-3 py-2 text-xs text-zinc-500">
+                          {o.refundNote || "\u2014"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ── Cancellations ── */}
+          {returnsData.cancellations && (
+            <div className="rounded-lg border border-border bg-surface p-5">
+              <h3 className="mb-4 text-sm font-medium text-foreground">
+                Cancellations
+              </h3>
+
+              {/* Cancellation KPI Row */}
+              <div className="mb-5 grid grid-cols-3 gap-4">
+                <div className="rounded-md border border-border bg-[#0A0A0B] p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted">Total Cancelled</p>
+                  <p className="mt-1 font-mono text-2xl font-semibold text-zinc-100">
+                    {returnsData.cancellations.totalCancelled}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border bg-[#0A0A0B] p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted">Cancellation Rate</p>
+                  <p className="mt-1 font-mono text-2xl font-semibold text-zinc-100">
+                    {formatPercent(returnsData.cancellations.cancellationRate)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border bg-[#0A0A0B] p-4">
+                  <p className="text-xs uppercase tracking-wide text-muted">Total Value Lost</p>
+                  <p className="mt-1 font-mono text-2xl font-semibold text-zinc-100">
+                    {formatCurrency(returnsData.cancellations.totalCancelledValue)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Cancellation Reasons */}
+              {returnsData.cancellations.reasons && returnsData.cancellations.reasons.length > 0 && (
+                <div className="mb-5">
+                  <h4 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted">
+                    Cancellation Reasons
+                  </h4>
+                  <div className="space-y-2">
+                    {returnsData.cancellations.reasons.map((r: any) => {
+                      const maxCount = Math.max(
+                        ...returnsData.cancellations.reasons.map((x: any) => x.count)
+                      );
+                      const pct = maxCount > 0 ? (r.count / maxCount) * 100 : 0;
+                      return (
+                        <div key={r.reason} className="flex items-center gap-3">
+                          <span className="w-40 shrink-0 truncate text-xs text-zinc-300">
+                            {r.reason || "No reason given"}
+                          </span>
+                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-800">
+                            <div
+                              className="h-full rounded-full bg-amber-500/60"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className="w-8 shrink-0 text-right font-mono text-xs text-zinc-400">
+                            {r.count}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Cancelled Orders Table */}
+              {returnsData.cancellations.details && returnsData.cancellations.details.length > 0 && (
+                <div className="overflow-x-auto">
+                  <h4 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted">
+                    Cancelled Orders
+                  </h4>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted">
+                        <th className="px-3 py-2">Order #</th>
+                        <th className="px-3 py-2">Date</th>
+                        <th className="px-3 py-2">Customer</th>
+                        <th className="px-3 py-2">Reason</th>
+                        <th className="px-3 py-2 text-right">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {returnsData.cancellations.details.map((c: any) => (
+                        <tr
+                          key={c.orderId}
+                          className="border-b border-border/50 transition-colors hover:bg-white/[0.02]"
+                        >
+                          <td className="px-3 py-2 font-mono text-xs text-zinc-200">
+                            {c.orderNumber}
+                          </td>
+                          <td className="px-3 py-2 text-sm text-zinc-300">
+                            {fmtDate(c.orderDate)}
+                          </td>
+                          <td className="max-w-[160px] truncate px-3 py-2 text-zinc-300">
+                            {c.customer}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-zinc-400">
+                            {c.cancelReason || "No reason"}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                            {formatCurrency(c.orderTotal)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Disputes / Chargebacks ── */}
+          {returnsData.disputes && (
+            <div className="rounded-lg border border-border bg-surface p-5">
+              <h3 className="mb-4 text-sm font-medium text-foreground">
+                Disputes & Chargebacks
+              </h3>
+              {returnsData.disputes.total === 0 ? (
+                <div className="rounded-md border border-border bg-[#0A0A0B] px-4 py-6 text-center">
+                  <p className="text-xs text-zinc-500">
+                    No disputes in this period
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Dispute KPIs */}
+                  <div className="mb-5 grid grid-cols-2 gap-4">
+                    <div className="rounded-md border border-border bg-[#0A0A0B] p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted">Total Disputes</p>
+                      <p className="mt-1 font-mono text-2xl font-semibold text-zinc-100">
+                        {returnsData.disputes.total}
+                      </p>
+                    </div>
+                    <div className="rounded-md border border-border bg-[#0A0A0B] p-4">
+                      <p className="text-xs uppercase tracking-wide text-muted">Total Amount</p>
+                      <p className="mt-1 font-mono text-2xl font-semibold text-zinc-100">
+                        {formatCurrency(returnsData.disputes.totalAmount)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* By Status + By Reason side by side */}
+                  <div className="mb-5 grid grid-cols-2 gap-4">
+                    {/* By Status */}
+                    {returnsData.disputes.byStatus && returnsData.disputes.byStatus.length > 0 && (
+                      <div>
+                        <h4 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted">
+                          By Status
+                        </h4>
+                        <div className="space-y-2">
+                          {returnsData.disputes.byStatus.map((s: any) => (
+                            <div key={s.status} className="flex items-center justify-between">
+                              <span className="text-xs text-zinc-300">{s.status}</span>
+                              <span className="font-mono text-xs text-zinc-400">{s.count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* By Reason */}
+                    {returnsData.disputes.byReason && returnsData.disputes.byReason.length > 0 && (
+                      <div>
+                        <h4 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted">
+                          By Reason
+                        </h4>
+                        <div className="space-y-2">
+                          {returnsData.disputes.byReason.map((r: any) => (
+                            <div key={r.reason} className="flex items-center justify-between">
+                              <span className="text-xs text-zinc-300">{r.reason}</span>
+                              <span className="font-mono text-xs text-zinc-400">{r.count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dispute Details Table */}
+                  {returnsData.disputes.details && returnsData.disputes.details.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <h4 className="mb-3 text-xs font-medium uppercase tracking-wider text-muted">
+                        Dispute Details
+                      </h4>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted">
+                            <th className="px-3 py-2">Type</th>
+                            <th className="px-3 py-2 text-right">Amount</th>
+                            <th className="px-3 py-2">Reason</th>
+                            <th className="px-3 py-2">Status</th>
+                            <th className="px-3 py-2">Evidence Due By</th>
+                            <th className="px-3 py-2">Initiated</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {returnsData.disputes.details.map((d: any) => (
+                            <tr
+                              key={d.id}
+                              className="border-b border-border/50 transition-colors hover:bg-white/[0.02]"
+                            >
+                              <td className="px-3 py-2 text-xs text-zinc-300">
+                                {d.type}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono text-zinc-300">
+                                {formatCurrency(d.amount)}{" "}
+                                <span className="text-zinc-500">{d.currency}</span>
+                              </td>
+                              <td className="max-w-[160px] truncate px-3 py-2 text-xs text-zinc-400">
+                                {d.reason}
+                              </td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={clsx(
+                                    "inline-block rounded px-1.5 py-0.5 text-xs font-medium",
+                                    d.status === "won"
+                                      ? "bg-emerald-500/10 text-emerald-400"
+                                      : d.status === "lost"
+                                      ? "bg-red-500/10 text-red-400"
+                                      : "bg-amber-500/10 text-amber-400"
+                                  )}
+                                >
+                                  {d.status}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-zinc-400">
+                                {d.evidenceDueBy ? fmtDate(d.evidenceDueBy) : "\u2014"}
+                              </td>
+                              <td className="px-3 py-2 text-xs text-zinc-400">
+                                {d.initiatedAt ? fmtDate(d.initiatedAt) : "\u2014"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

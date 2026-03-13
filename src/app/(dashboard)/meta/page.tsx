@@ -243,11 +243,7 @@ function sortByActiveAndSpend<T extends { status: string; spend: number }>(items
 
 export default function MetaOverviewPage() {
   /* ── Dashboard context ── */
-  const { days, refreshKey, setSyncing } = useDashboard();
-  const datePreset = useMemo(() => {
-    const map: Record<number, string> = { 1: "today", 7: "last_7d", 14: "last_14d", 28: "last_28d" };
-    return map[days] ?? "last_7d";
-  }, [days]);
+  const { days, startISO, endISO, refreshKey, setSyncing } = useDashboard();
 
   /* ── Live data state ── */
   const [accountKPIs, setAccountKPIs] = useState<AccountKPIs | null>(null);
@@ -284,11 +280,11 @@ export default function MetaOverviewPage() {
       setSyncing(true);
       try {
         const [accountRes, campaignsRes, funnelRes, creativeRes, audienceRes] = await Promise.all([
-          fetch(`/api/meta?level=account&date_preset=${datePreset}`),
-          fetch(`/api/meta?level=campaigns&date_preset=${datePreset}`),
-          fetch(`/api/meta?level=funnel&date_preset=${datePreset}`),
-          fetch(`/api/meta?level=creative_breakdown&date_preset=${datePreset}`),
-          fetch(`/api/meta?level=audience_breakdown&date_preset=${datePreset}`),
+          fetch(`/api/meta?level=account&start=${startISO}&end=${endISO}`),
+          fetch(`/api/meta?level=campaigns&start=${startISO}&end=${endISO}`),
+          fetch(`/api/meta?level=funnel&start=${startISO}&end=${endISO}`),
+          fetch(`/api/meta?level=creative_breakdown&start=${startISO}&end=${endISO}`),
+          fetch(`/api/meta?level=audience_breakdown&start=${startISO}&end=${endISO}`),
         ]);
 
         if (!accountRes.ok) throw new Error(`Account API error: ${accountRes.status}`);
@@ -315,14 +311,14 @@ export default function MetaOverviewPage() {
       }
     }
     fetchData();
-  }, [datePreset, refreshKey, setSyncing]);
+  }, [startISO, endISO, refreshKey, setSyncing]);
 
   /* ── Fetch ad sets for a campaign ── */
   const fetchAdSets = useCallback(async (campaignId: string) => {
     if (adSetsByCampaign[campaignId] || loadingAdSets.has(campaignId)) return;
     setLoadingAdSets((prev) => new Set(prev).add(campaignId));
     try {
-      const res = await fetch(`/api/meta?level=adsets&campaign_id=${campaignId}&date_preset=${datePreset}`);
+      const res = await fetch(`/api/meta?level=adsets&campaign_id=${campaignId}&start=${startISO}&end=${endISO}`);
       if (!res.ok) throw new Error(`Ad sets API error: ${res.status}`);
       const data = await res.json();
       setAdSetsByCampaign((prev) => ({ ...prev, [campaignId]: data.adSets ?? [] }));
@@ -335,14 +331,14 @@ export default function MetaOverviewPage() {
         return next;
       });
     }
-  }, [adSetsByCampaign, loadingAdSets, datePreset]);
+  }, [adSetsByCampaign, loadingAdSets, startISO, endISO]);
 
   /* ── Fetch ads for an ad set ── */
   const fetchAds = useCallback(async (adSetId: string) => {
     if (adsByAdSet[adSetId] || loadingAds.has(adSetId)) return;
     setLoadingAds((prev) => new Set(prev).add(adSetId));
     try {
-      const res = await fetch(`/api/meta?level=ads&adset_id=${adSetId}&date_preset=${datePreset}`);
+      const res = await fetch(`/api/meta?level=ads&adset_id=${adSetId}&start=${startISO}&end=${endISO}`);
       if (!res.ok) throw new Error(`Ads API error: ${res.status}`);
       const data = await res.json();
       setAdsByAdSet((prev) => ({ ...prev, [adSetId]: data.ads ?? [] }));
@@ -355,7 +351,7 @@ export default function MetaOverviewPage() {
         return next;
       });
     }
-  }, [adsByAdSet, loadingAds, datePreset]);
+  }, [adsByAdSet, loadingAds, startISO, endISO]);
 
   /* ── Toggle campaign expansion (fetch ad sets on expand) ── */
   const toggleCampaign = useCallback((campaignId: string) => {

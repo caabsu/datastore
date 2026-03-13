@@ -214,17 +214,8 @@ function formatDateLabel(isoDate: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
 }
 
-function daysToDatePreset(days: number): string {
-  switch (days) {
-    case 1:  return "today";
-    case 14: return "last_14d";
-    case 28: return "last_28d";
-    default: return "last_7d";
-  }
-}
-
 export default function DashboardPage() {
-  const { days, refreshKey, setSyncing } = useDashboard();
+  const { days, startISO, endISO, refreshKey, setSyncing } = useDashboard();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -239,12 +230,11 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     setSyncing(true);
-    const datePreset = daysToDatePreset(days);
     try {
       const [shopifyRes, metaAccountRes, metaCampaignsRes] = await Promise.all([
-        fetch(`/api/shopify?days=${days}`),
-        fetch(`/api/meta?level=account&date_preset=${datePreset}`),
-        fetch(`/api/meta?level=campaigns&date_preset=${datePreset}`),
+        fetch(`/api/shopify?start=${startISO}&end=${endISO}`),
+        fetch(`/api/meta?level=account&start=${startISO}&end=${endISO}`),
+        fetch(`/api/meta?level=campaigns&start=${startISO}&end=${endISO}`),
       ]);
 
       if (!shopifyRes.ok) throw new Error(`Shopify API returned ${shopifyRes.status}`);
@@ -270,7 +260,7 @@ export default function DashboardPage() {
     } finally {
       setSyncing(false);
     }
-  }, [days, refreshKey, setSyncing]);
+  }, [startISO, endISO, refreshKey, setSyncing]);
 
   const fetchBriefing = async (shopify: ShopifyData, meta: MetaAccountData) => {
     if (!meta.kpis) return;

@@ -34,12 +34,24 @@ function isNewInPeriod(
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const days = parseInt(searchParams.get("days") ?? "7");
 
-    const now = new Date();
-    const startDate = new Date(now);
-    startDate.setDate(now.getDate() - days);
+    // Accept start/end ISO strings or fall back to days
+    const startParam = searchParams.get("start");
+    const endParam = searchParams.get("end");
+    let now: Date;
+    let startDate: Date;
 
+    if (startParam && endParam) {
+      startDate = new Date(startParam);
+      now = new Date(endParam);
+    } else {
+      const days = parseInt(searchParams.get("days") ?? "7");
+      now = new Date();
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - days);
+    }
+
+    const days = Math.max(1, Math.round((now.getTime() - startDate.getTime()) / 86_400_000));
     const prevStartDate = new Date(startDate);
     prevStartDate.setDate(startDate.getDate() - days);
 

@@ -207,7 +207,7 @@ function AlertSkeleton() {
 // ── Page Component ──
 
 export default function InsightsPage() {
-  const { days, refreshKey } = useDashboard();
+  const { startISO, endISO, refreshKey } = useDashboard();
   const [severityFilter, setSeverityFilter] = useState<string>("All");
   const [shopifyData, setShopifyData] = useState<ShopifyData | null>(null);
   const [metaData, setMetaData] = useState<MetaData | null>(null);
@@ -226,8 +226,8 @@ export default function InsightsPage() {
 
       try {
         const [shopifyRes, metaRes] = await Promise.all([
-          fetch(`/api/shopify?days=${days}`),
-          fetch(`/api/meta?level=account&date_preset=${days <= 1 ? "today" : days <= 7 ? "last_7d" : days <= 14 ? "last_14d" : "last_28d"}`),
+          fetch(`/api/shopify?start=${startISO}&end=${endISO}`),
+          fetch(`/api/meta?level=account&start=${startISO}&end=${endISO}`),
         ]);
 
         let shopify: ShopifyData | null = null;
@@ -263,7 +263,7 @@ export default function InsightsPage() {
     }
 
     fetchData();
-  }, [days, refreshKey]);
+  }, [startISO, endISO, refreshKey]);
 
   // Step 2: Generate AI briefing once we have data
   useEffect(() => {
