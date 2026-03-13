@@ -135,15 +135,6 @@ function extractCostPerAction(insight: MetaInsight, actionType: string): number 
   return action ? parseFloat(action.value) : 0;
 }
 
-/** Extract video_play_actions (3-second video views) */
-function extractVideoPlayActions(insight: MetaInsight): number {
-  if (!insight.video_play_actions) return 0;
-  const action = insight.video_play_actions.find(
-    (a) => a.action_type === "video_view"
-  );
-  return action ? parseFloat(action.value) : 0;
-}
-
 // ── API Methods ──
 
 const INSIGHT_FIELDS = [
@@ -310,8 +301,10 @@ export function computeInsightMetrics(insight: MetaInsight) {
   ]);
 
   // Video / engagement metrics
-  const videoPlayActions = extractVideoPlayActions(insight);
-  const hookRate = impressions > 0 ? (videoPlayActions / impressions) * 100 : 0;
+  // Hook rate uses native Meta "3-second video views" from the actions array
+  // (NOT video_play_actions which counts 0-second autoplay starts)
+  const threeSecViews = extractAction(insight, "video_view");
+  const hookRate = impressions > 0 ? (threeSecViews / impressions) * 100 : 0;
   const postEngagement = extractAction(insight, "post_engagement");
   const engagementDepth = reach > 0 ? (postEngagement / reach) * 100 : 0;
 
