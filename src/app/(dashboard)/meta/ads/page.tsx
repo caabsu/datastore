@@ -8,6 +8,7 @@ import {
   formatMultiplier,
   formatNumber,
 } from "@/lib/format";
+import { useDashboard } from "@/lib/dashboard-context";
 import clsx from "clsx";
 
 /* ───────── Live API type ───────── */
@@ -363,6 +364,7 @@ const creativeColumns: ColumnDef<LiveAd, unknown>[] = [
 /* ───────── Page Component ───────── */
 
 export default function MetaAdsPage() {
+  const { days, refreshKey } = useDashboard();
   const [ads, setAds] = useState<LiveAd[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -378,7 +380,8 @@ export default function MetaAdsPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/meta?level=ads&date_preset=last_7d");
+        const datePreset = days <= 1 ? "today" : days <= 7 ? "last_7d" : days <= 14 ? "last_14d" : "last_28d";
+        const res = await fetch(`/api/meta?level=ads&date_preset=${datePreset}`);
         if (!res.ok) {
           throw new Error(`API error: ${res.status} ${res.statusText}`);
         }
@@ -402,7 +405,7 @@ export default function MetaAdsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [days, refreshKey]);
 
   const columns = useMemo(() => {
     const cols: ColumnDef<LiveAd, unknown>[] = [...identityColumns];

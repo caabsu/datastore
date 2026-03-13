@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useDashboard } from "@/lib/dashboard-context";
 import KPICard from "@/components/cards/KPICard";
 import RevenueChart from "@/components/charts/RevenueChart";
 import { formatCurrency, formatPercent, formatMultiplier } from "@/lib/format";
@@ -213,7 +214,17 @@ function formatDateLabel(isoDate: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
 }
 
+function daysToDatePreset(days: number): string {
+  switch (days) {
+    case 1:  return "today";
+    case 14: return "last_14d";
+    case 28: return "last_28d";
+    default: return "last_7d";
+  }
+}
+
 export default function DashboardPage() {
+  const { days, refreshKey, setSyncing } = useDashboard();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -227,11 +238,13 @@ export default function DashboardPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setSyncing(true);
+    const datePreset = daysToDatePreset(days);
     try {
       const [shopifyRes, metaAccountRes, metaCampaignsRes] = await Promise.all([
-        fetch("/api/shopify?days=7"),
-        fetch("/api/meta?level=account"),
-        fetch("/api/meta?level=campaigns"),
+        fetch(`/api/shopify?days=${days}`),
+        fetch(`/api/meta?level=account&date_preset=${datePreset}`),
+        fetch(`/api/meta?level=campaigns&date_preset=${datePreset}`),
       ]);
 
       if (!shopifyRes.ok) throw new Error(`Shopify API returned ${shopifyRes.status}`);
@@ -254,8 +267,10 @@ export default function DashboardPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       setLoading(false);
+    } finally {
+      setSyncing(false);
     }
-  }, []);
+  }, [days, refreshKey, setSyncing]);
 
   const fetchBriefing = async (shopify: ShopifyData, meta: MetaAccountData) => {
     if (!meta.kpis) return;

@@ -41,8 +41,8 @@ export async function GET(request: Request) {
         }),
       ]);
 
-    const currentKPIs = computeShopifyKPIs(currentOrders);
-    const prevKPIs = computeShopifyKPIs(prevOrders);
+    const currentKPIs = computeShopifyKPIs(currentOrders, startDate);
+    const prevKPIs = computeShopifyKPIs(prevOrders, prevStart);
 
     const metaMetrics =
       metaInsights.length > 0 ? computeInsightMetrics(metaInsights[0]) : null;

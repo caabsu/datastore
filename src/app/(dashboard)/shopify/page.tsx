@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useDashboard } from "@/lib/dashboard-context";
 import KPICard from "@/components/cards/KPICard";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import {
@@ -98,6 +99,7 @@ const SHOPIFY_TOOLTIPS: Record<string, string> = {
 };
 
 export default function ShopifyPage() {
+  const { days, refreshKey, setSyncing } = useDashboard();
   const [data, setData] = useState<ShopifyAPIResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -106,8 +108,9 @@ export default function ShopifyPage() {
     let cancelled = false;
 
     async function fetchData() {
+      setSyncing(true);
       try {
-        const res = await fetch("/api/shopify?days=28");
+        const res = await fetch(`/api/shopify?days=${days}`);
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body.error ?? `API error: ${res.status}`);
@@ -123,12 +126,13 @@ export default function ShopifyPage() {
         }
       } finally {
         if (!cancelled) setLoading(false);
+        setSyncing(false);
       }
     }
 
     fetchData();
     return () => { cancelled = true; };
-  }, []);
+  }, [days, refreshKey, setSyncing]);
 
   if (loading) {
     return (

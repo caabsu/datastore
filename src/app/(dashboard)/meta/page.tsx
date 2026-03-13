@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import KPICard from "@/components/cards/KPICard";
 import {
   formatCurrency,
@@ -8,6 +8,7 @@ import {
   formatMultiplier,
   formatCompactCurrency,
 } from "@/lib/format";
+import { useDashboard } from "@/lib/dashboard-context";
 import clsx from "clsx";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import {
@@ -232,6 +233,13 @@ function LoadingSkeleton() {
 }
 
 export default function MetaOverviewPage() {
+  /* ── Dashboard context ── */
+  const { days, refreshKey, setSyncing } = useDashboard();
+  const datePreset = useMemo(() => {
+    const map: Record<number, string> = { 1: "today", 7: "last_7d", 14: "last_14d", 28: "last_28d" };
+    return map[days] ?? "last_7d";
+  }, [days]);
+
   /* ── Live data state ── */
   const [accountKPIs, setAccountKPIs] = useState<AccountKPIs | null>(null);
   const [dailyTrend, setDailyTrend] = useState<DailyTrendPoint[]>([]);
@@ -241,6 +249,7 @@ export default function MetaOverviewPage() {
   const [audienceBreakdown, setAudienceBreakdown] = useState<AudienceBreakdownRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hideInactive, setHideInactive] = useState(true);
 
   /* ── On-demand hierarchy data ── */
   const [adSetsByCampaign, setAdSetsByCampaign] = useState<Record<string, APIAdSet[]>>({});
@@ -252,18 +261,19 @@ export default function MetaOverviewPage() {
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
   const [expandedAdSets, setExpandedAdSets] = useState<Set<string>>(new Set());
 
-  /* ── Fetch account-level data + campaigns on mount ── */
+  /* ── Fetch account-level data + campaigns on mount / sync / date change ── */
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       setError(null);
+      setSyncing(true);
       try {
         const [accountRes, campaignsRes, funnelRes, creativeRes, audienceRes] = await Promise.all([
-          fetch("/api/meta?level=account"),
-          fetch("/api/meta?level=campaigns"),
-          fetch("/api/meta?level=funnel"),
-          fetch("/api/meta?level=creative_breakdown"),
-          fetch("/api/meta?level=audience_breakdown"),
+          fetch(`/api/meta?level=account&date_preset=${datePreset}`),
+          fetch(`/api/meta?level=campaigns&date_preset=${datePreset}`),
+          fetch(`/api/meta?level=funnel&date_preset=${datePreset}`),
+          fetch(`/api/meta?level=creative_breakdown&date_preset=${datePreset}`),
+          fetch(`/api/meta?level=audience_breakdown&date_preset=${datePreset}`),
         ]);
 
         if (!accountRes.ok) throw new Error(`Account API error: ${accountRes.status}`);
@@ -286,17 +296,18 @@ export default function MetaOverviewPage() {
         setError(err instanceof Error ? err.message : "Failed to load Meta data");
       } finally {
         setLoading(false);
+        setSyncing(false);
       }
     }
     fetchData();
-  }, []);
+  }, [datePreset, refreshKey, setSyncing]);
 
   /* ── Fetch ad sets for a campaign ── */
   const fetchAdSets = useCallback(async (campaignId: string) => {
     if (adSetsByCampaign[campaignId] || loadingAdSets.has(campaignId)) return;
     setLoadingAdSets((prev) => new Set(prev).add(campaignId));
     try {
-      const res = await fetch(`/api/meta?level=adsets&campaign_id=${campaignId}`);
+      const res = await fetch(`/api/meta?level=adsets&campaign_id=${campaignId}&date_preset=${datePreset}`);
       if (!res.ok) throw new Error(`Ad sets API error: ${res.status}`);
       const data = await res.json();
       setAdSetsByCampaign((prev) => ({ ...prev, [campaignId]: data.adSets ?? [] }));
@@ -309,14 +320,14 @@ export default function MetaOverviewPage() {
         return next;
       });
     }
-  }, [adSetsByCampaign, loadingAdSets]);
+  }, [adSetsByCampaign, loadingAdSets, datePreset]);
 
   /* ── Fetch ads for an ad set ── */
   const fetchAds = useCallback(async (adSetId: string) => {
     if (adsByAdSet[adSetId] || loadingAds.has(adSetId)) return;
     setLoadingAds((prev) => new Set(prev).add(adSetId));
     try {
-      const res = await fetch(`/api/meta?level=ads&adset_id=${adSetId}`);
+      const res = await fetch(`/api/meta?level=ads&adset_id=${adSetId}&date_preset=${datePreset}`);
       if (!res.ok) throw new Error(`Ads API error: ${res.status}`);
       const data = await res.json();
       setAdsByAdSet((prev) => ({ ...prev, [adSetId]: data.ads ?? [] }));
@@ -329,7 +340,7 @@ export default function MetaOverviewPage() {
         return next;
       });
     }
-  }, [adsByAdSet, loadingAds]);
+  }, [adsByAdSet, loadingAds, datePreset]);
 
   /* ── Toggle campaign expansion (fetch ad sets on expand) ── */
   const toggleCampaign = useCallback((campaignId: string) => {
@@ -383,7 +394,7 @@ export default function MetaOverviewPage() {
             Meta Ads Overview
           </h1>
           <p className="text-xs text-muted mt-1">
-            Performance summary across all Meta campaigns — Last 7 days
+            Performance summary across all Meta campaigns — {days === 1 ? "Today" : `Last ${days} days`}
           </p>
         </div>
         <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-5 text-sm text-red-400">
@@ -454,6 +465,21 @@ export default function MetaOverviewPage() {
 
   const funnelMax = funnel.length > 0 ? funnel[0].value : 1;
 
+  /* ── Sort helper: ACTIVE first, then by spend descending ── */
+  function sortByActiveAndSpend<T extends { status: string; spend: number }>(items: T[]): T[] {
+    return [...items].sort((a, b) => {
+      if (a.status === "ACTIVE" && b.status !== "ACTIVE") return -1;
+      if (a.status !== "ACTIVE" && b.status === "ACTIVE") return 1;
+      return (b.spend ?? 0) - (a.spend ?? 0);
+    });
+  }
+
+  /* ── Filtered + sorted campaigns ── */
+  const displayCampaigns = useMemo(() => {
+    const filtered = hideInactive ? campaigns.filter((c) => c.status === "ACTIVE") : campaigns;
+    return sortByActiveAndSpend(filtered);
+  }, [campaigns, hideInactive]);
+
   return (
     <div className="space-y-6">
       {/* ── Page Header ── */}
@@ -462,7 +488,7 @@ export default function MetaOverviewPage() {
           Meta Ads Overview
         </h1>
         <p className="text-xs text-muted mt-1">
-          Performance summary across all Meta campaigns — Last 7 days
+          Performance summary across all Meta campaigns — {days === 1 ? "Today" : `Last ${days} days`}
         </p>
       </div>
 
@@ -953,9 +979,20 @@ export default function MetaOverviewPage() {
           <h3 className="text-sm font-medium text-zinc-400">
             Campaign → Ad Set → Ad Breakdown
           </h3>
-          <span className="text-[11px] text-zinc-600">
-            Expand to drill into ad set and ad-level metrics
-          </span>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hideInactive}
+                onChange={(e) => setHideInactive(e.target.checked)}
+                className="h-3 w-3 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/30 focus:ring-offset-0 cursor-pointer"
+              />
+              <span className="text-[11px] text-zinc-400">Active only</span>
+            </label>
+            <span className="text-[11px] text-zinc-600">
+              Expand to drill into ad set and ad-level metrics
+            </span>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -976,9 +1013,12 @@ export default function MetaOverviewPage() {
               </tr>
             </thead>
             <tbody>
-              {campaigns.map((campaign) => {
+              {displayCampaigns.map((campaign) => {
                 const isCampaignExpanded = expandedCampaigns.has(campaign.id);
-                const campaignAdSets = adSetsByCampaign[campaign.id] ?? [];
+                const rawAdSets = adSetsByCampaign[campaign.id] ?? [];
+                const campaignAdSets = sortByActiveAndSpend(
+                  hideInactive ? rawAdSets.filter((s) => s.status === "ACTIVE") : rawAdSets
+                );
                 const isLoadingAdSets = loadingAdSets.has(campaign.id);
                 return (
                   <>
@@ -1064,7 +1104,10 @@ export default function MetaOverviewPage() {
                       campaignAdSets.map((adSet) => {
                         const adSetKey = `${campaign.id}::${adSet.id}`;
                         const isAdSetExpanded = expandedAdSets.has(adSetKey);
-                        const adSetAds = adsByAdSet[adSet.id] ?? [];
+                        const rawAds = adsByAdSet[adSet.id] ?? [];
+                        const adSetAds = sortByActiveAndSpend(
+                          hideInactive ? rawAds.filter((a) => a.status === "ACTIVE") : rawAds
+                        );
                         const isLoadingTheseAds = loadingAds.has(adSet.id);
                         // Derive targeting label from API targeting object
                         const targetingLabel =

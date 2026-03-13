@@ -165,7 +165,25 @@ export async function getCustomers(params?: {
 
 // ── Computed Metrics ──
 
-export function computeShopifyKPIs(orders: ShopifyOrder[]) {
+/**
+ * Determine if a customer is "new" during the query period.
+ * A customer is new if their account was created within the period
+ * (i.e., their first order triggered account creation during this window).
+ */
+function isNewCustomerInPeriod(
+  order: ShopifyOrder,
+  periodStart: Date
+): boolean {
+  if (!order.customer) return false;
+  try {
+    const customerCreated = new Date(order.customer.created_at);
+    return customerCreated >= periodStart;
+  } catch {
+    return false;
+  }
+}
+
+export function computeShopifyKPIs(orders: ShopifyOrder[], periodStart?: Date) {
   const completed = orders.filter(
     (o) => o.financial_status === "paid" || o.financial_status === "partially_refunded"
   );
@@ -190,12 +208,15 @@ export function computeShopifyKPIs(orders: ShopifyOrder[]) {
   );
   const unitsPerOrder = totalOrders > 0 ? totalUnits / totalOrders : 0;
 
-  const refundedOrders = orders.filter((o) => o.financial_status === "refunded").length;
+  // Refund rate: count orders with any refund activity (not just fully refunded)
+  const refundedOrders = orders.filter(
+    (o) => o.financial_status === "refunded" || o.financial_status === "partially_refunded"
+  ).length;
   const refundRate = orders.length > 0 ? (refundedOrders / orders.length) * 100 : 0;
 
-  const newCustomers = completed.filter(
-    (o) => o.customer && o.customer.orders_count <= 1
-  ).length;
+  // New vs returning: compare customer.created_at against period start
+  const start = periodStart ?? new Date(0);
+  const newCustomers = completed.filter((o) => isNewCustomerInPeriod(o, start)).length;
   const newCustomerPct = totalOrders > 0 ? (newCustomers / totalOrders) * 100 : 0;
 
   return {
@@ -214,10 +235,13 @@ export function computeShopifyKPIs(orders: ShopifyOrder[]) {
 
 // ── Customer Mix ──
 // Returns new vs returning breakdown with percentages, revenue, and daily split
-export function computeCustomerMix(orders: ShopifyOrder[]) {
+// Uses customer.created_at vs periodStart to determine new vs returning
+export function computeCustomerMix(orders: ShopifyOrder[], periodStart?: Date) {
   const completed = orders.filter(
     (o) => o.financial_status === "paid" || o.financial_status === "partially_refunded"
   );
+
+  const start = periodStart ?? new Date(0);
 
   let newRevenue = 0;
   let returningRevenue = 0;
@@ -226,7 +250,7 @@ export function computeCustomerMix(orders: ShopifyOrder[]) {
 
   completed.forEach((o) => {
     const revenue = parseFloat(o.subtotal_price);
-    if (o.customer && o.customer.orders_count <= 1) {
+    if (isNewCustomerInPeriod(o, start)) {
       newRevenue += revenue;
       newCount++;
     } else {
@@ -244,7 +268,7 @@ export function computeCustomerMix(orders: ShopifyOrder[]) {
   completed.forEach((o) => {
     const day = o.created_at.substring(0, 10);
     const entry = dailyMap.get(day) ?? { new: 0, returning: 0 };
-    if (o.customer && o.customer.orders_count <= 1) {
+    if (isNewCustomerInPeriod(o, start)) {
       entry.new++;
     } else {
       entry.returning++;
@@ -475,7 +499,8 @@ export function computeLTV(customers: ShopifyCustomer[]) {
 // repeatRate, avgOrdersPerCustomer, repeatRevenuePct from orders + customers
 export function computeRepeatData(
   orders: ShopifyOrder[],
-  customers: ShopifyCustomer[]
+  customers: ShopifyCustomer[],
+  periodStart?: Date
 ) {
   const totalCustomers = customers.length;
   const repeatCustomers = customers.filter((c) => c.orders_count > 1);
@@ -487,7 +512,8 @@ export function computeRepeatData(
       ? customers.reduce((s, c) => s + c.orders_count, 0) / totalCustomers
       : 0;
 
-  // Compute repeat revenue % from orders
+  // Compute repeat revenue % from orders using customer.created_at
+  const start = periodStart ?? new Date(0);
   const completed = orders.filter(
     (o) => o.financial_status === "paid" || o.financial_status === "partially_refunded"
   );
@@ -496,7 +522,7 @@ export function computeRepeatData(
     0
   );
   const returningRevenue = completed
-    .filter((o) => o.customer && o.customer.orders_count > 1)
+    .filter((o) => !isNewCustomerInPeriod(o, start))
     .reduce((s, o) => s + parseFloat(o.subtotal_price), 0);
   const repeatRevenuePct =
     totalRevenue > 0 ? (returningRevenue / totalRevenue) * 100 : 0;

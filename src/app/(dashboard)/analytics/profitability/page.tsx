@@ -13,6 +13,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { formatCurrency, formatPercent } from "@/lib/format";
+import { useDashboard } from "@/lib/dashboard-context";
 import clsx from "clsx";
 
 /* ── API response types ── */
@@ -302,6 +303,7 @@ function LoadingSkeleton() {
 
 /* ── Page ── */
 export default function ProfitabilityPage() {
+  const { days, refreshKey } = useDashboard();
   const [data, setData] = useState<ProfitabilityResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -313,7 +315,7 @@ export default function ProfitabilityPage() {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch("/api/profitability?days=7");
+        const res = await fetch(`/api/profitability?days=${days}`);
         if (!res.ok) {
           throw new Error(`Failed to load profitability data (${res.status})`);
         }
@@ -336,7 +338,7 @@ export default function ProfitabilityPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [days, refreshKey]);
 
   if (loading) {
     return <LoadingSkeleton />;

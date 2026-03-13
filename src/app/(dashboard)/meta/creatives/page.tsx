@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { formatCurrency, formatPercent, formatMultiplier } from "@/lib/format";
+import { useDashboard } from "@/lib/dashboard-context";
 import clsx from "clsx";
 
 /* ───────── Types ───────── */
@@ -268,6 +269,7 @@ function TableSkeleton() {
 /* ───────── Component ───────── */
 
 export default function CreativeAnalysisPage() {
+  const { days, refreshKey } = useDashboard();
   const [creatives, setCreatives] = useState<CreativeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -277,7 +279,8 @@ export default function CreativeAnalysisPage() {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch("/api/meta?level=ads&date_preset=last_7d");
+        const datePreset = days <= 1 ? "today" : days <= 7 ? "last_7d" : days <= 14 ? "last_14d" : "last_28d";
+        const res = await fetch(`/api/meta?level=ads&date_preset=${datePreset}`);
         if (!res.ok) {
           throw new Error(`API returned ${res.status}: ${res.statusText}`);
         }
@@ -295,7 +298,7 @@ export default function CreativeAnalysisPage() {
       }
     }
     fetchAds();
-  }, []);
+  }, [days, refreshKey]);
 
   // Sort by score descending
   const sorted = [...creatives].sort((a, b) => b.score - a.score);

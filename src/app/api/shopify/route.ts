@@ -14,6 +14,23 @@ import {
   computeCohortData,
 } from "@/lib/shopify";
 
+/**
+ * Determine if a customer is "new" during the period.
+ * Uses customer.created_at vs periodStart — if the customer account
+ * was created during this window, they are a new customer.
+ */
+function isNewInPeriod(
+  order: { customer: { created_at: string } | null },
+  periodStart: Date
+): boolean {
+  if (!order.customer) return false;
+  try {
+    return new Date(order.customer.created_at) >= periodStart;
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -42,8 +59,9 @@ export async function GET(request: Request) {
       getCustomers({ limit: 250 }),
     ]);
 
-    const current = computeShopifyKPIs(currentOrders);
-    const previous = computeShopifyKPIs(prevOrders);
+    // Pass periodStart so new/returning is determined by customer.created_at
+    const current = computeShopifyKPIs(currentOrders, startDate);
+    const previous = computeShopifyKPIs(prevOrders, prevStartDate);
 
     // Calculate changes
     const pctChange = (curr: number, prev: number) =>
@@ -59,14 +77,14 @@ export async function GET(request: Request) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, total]) => ({ date, total }));
 
-    // Daily orders breakdown (new vs returning)
+    // Daily orders breakdown (new vs returning) — use customer.created_at
     const dailyOrdersMap = new Map<string, { newOrders: number; repeatOrders: number }>();
     currentOrders
       .filter((o) => o.financial_status === "paid" || o.financial_status === "partially_refunded")
       .forEach((o) => {
         const day = o.created_at.substring(0, 10);
         const entry = dailyOrdersMap.get(day) ?? { newOrders: 0, repeatOrders: 0 };
-        if (o.customer && o.customer.orders_count <= 1) {
+        if (isNewInPeriod(o, startDate)) {
           entry.newOrders++;
         } else {
           entry.repeatOrders++;
@@ -77,14 +95,14 @@ export async function GET(request: Request) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, data]) => ({ date, ...data }));
 
-    // Compute all additional data
-    const customerMix = computeCustomerMix(currentOrders);
+    // Compute all additional data — pass periodStart for new/returning
+    const customerMix = computeCustomerMix(currentOrders, startDate);
     const hourlyOrders = computeHourlyOrders(currentOrders);
     const geoData = computeGeoData(currentOrders);
     const shopifyCategories = computeCategories(currentOrders, products);
     const topProducts = computeTopProducts(currentOrders);
     const shopifyLTV = computeLTV(customers);
-    const shopifyRepeatData = computeRepeatData(currentOrders, customers);
+    const shopifyRepeatData = computeRepeatData(currentOrders, customers, startDate);
     const cohortData = computeCohortData(currentOrders);
 
     return NextResponse.json({

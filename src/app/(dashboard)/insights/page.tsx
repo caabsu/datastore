@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import InsightCard from "@/components/cards/InsightCard";
 import AlertCard from "@/components/cards/AlertCard";
 import { Search } from "lucide-react";
+import { useDashboard } from "@/lib/dashboard-context";
 
 // ── Types ──
 
@@ -206,6 +207,7 @@ function AlertSkeleton() {
 // ── Page Component ──
 
 export default function InsightsPage() {
+  const { days, refreshKey } = useDashboard();
   const [severityFilter, setSeverityFilter] = useState<string>("All");
   const [shopifyData, setShopifyData] = useState<ShopifyData | null>(null);
   const [metaData, setMetaData] = useState<MetaData | null>(null);
@@ -224,8 +226,8 @@ export default function InsightsPage() {
 
       try {
         const [shopifyRes, metaRes] = await Promise.all([
-          fetch("/api/shopify?days=7"),
-          fetch("/api/meta?level=account"),
+          fetch(`/api/shopify?days=${days}`),
+          fetch(`/api/meta?level=account&date_preset=${days <= 1 ? "today" : days <= 7 ? "last_7d" : days <= 14 ? "last_14d" : "last_28d"}`),
         ]);
 
         let shopify: ShopifyData | null = null;
@@ -261,7 +263,7 @@ export default function InsightsPage() {
     }
 
     fetchData();
-  }, []);
+  }, [days, refreshKey]);
 
   // Step 2: Generate AI briefing once we have data
   useEffect(() => {

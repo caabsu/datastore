@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { formatCurrency } from "@/lib/format";
+import { useDashboard } from "@/lib/dashboard-context";
 
 interface Product {
   productId: number;
@@ -16,6 +17,7 @@ interface Product {
 }
 
 export default function ProductsPage() {
+  const { days, refreshKey } = useDashboard();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,7 +25,7 @@ export default function ProductsPage() {
   useEffect(() => {
     async function fetchProducts() {
       try {
-        const res = await fetch("/api/products?days=28");
+        const res = await fetch(`/api/products?days=${days}`);
         if (!res.ok) throw new Error(`Failed to fetch products (${res.status})`);
         const data = await res.json();
         setProducts(data.products);
@@ -34,7 +36,7 @@ export default function ProductsPage() {
       }
     }
     fetchProducts();
-  }, []);
+  }, [days, refreshKey]);
 
   // Compute AOV top quartile threshold for emerald indicator
   const aovThreshold = (() => {
