@@ -1,73 +1,74 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
-import { metaAds, type MetaAd } from "@/lib/mock-data";
 import {
   formatCurrency,
   formatPercent,
   formatMultiplier,
+  formatNumber,
 } from "@/lib/format";
 import clsx from "clsx";
 
-/* ───────── Helpers ───────── */
+/* ───────── Live API type ───────── */
 
-function TrendIndicator({
-  value,
-  invert = false,
-}: {
-  value: number | null;
-  invert?: boolean;
-}) {
-  if (value === null) return <span className="text-zinc-600 text-[10px]">—</span>;
-  const abs = Math.abs(value);
-  if (abs < 1) {
-    return (
-      <span className="text-zinc-500 text-[10px] leading-none">— 0%</span>
-    );
-  }
-  const isPositive = value > 0;
-  const isGood = invert ? !isPositive : isPositive;
-  const arrow = isPositive ? "▲" : "▼";
-  const color = isGood ? "text-emerald-400" : "text-red-400";
-  return (
-    <span className={clsx("text-[10px] leading-none", color)}>
-      {arrow} {abs.toFixed(1)}%
-    </span>
-  );
+interface LiveAd {
+  id: string;
+  name: string;
+  adsetId: string;
+  campaignId: string;
+  status: string;
+  creative: string | null;
+  spend: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  purchases: number;
+  revenue: number;
+  roas: number;
+  cpa: number;
+  frequency: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  reachCPM: number;
+  linkClicks: number;
+  addToCart: number;
+  initiateCheckout: number;
+  hookRate: number | null;
+  engagementDepth: number | null;
+  date_start: string;
+  date_stop: string;
 }
+
+/* ───────── Helpers ───────── */
 
 function MetricCell({
   value,
   formatted,
-  trend,
-  invertTrend = false,
   colorFn,
 }: {
   value: number | null;
   formatted: string;
-  trend: number | null;
-  invertTrend?: boolean;
   colorFn?: (v: number) => string;
 }) {
-  if (value === null) {
-    return <span className="text-zinc-600 font-mono">—</span>;
+  if (value === null || value === undefined) {
+    return <span className="text-zinc-600 font-mono">--</span>;
   }
   const colorClass = colorFn ? colorFn(value) : "";
   return (
-    <div className="flex flex-col items-end gap-0.5">
-      <span className={clsx("font-mono text-sm", colorClass)}>{formatted}</span>
-      <TrendIndicator value={trend} invert={invertTrend} />
-    </div>
+    <span className={clsx("font-mono text-sm", colorClass)}>{formatted}</span>
   );
 }
 
-function StatusBadge({ status }: { status: "Active" | "Paused" }) {
+function StatusBadge({ status }: { status: string }) {
+  const isActive = status.toUpperCase() === "ACTIVE";
+  const label = isActive ? "Active" : "Paused";
   return (
     <span
       className={clsx(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-        status === "Active"
+        isActive
           ? "bg-emerald-500/10 text-emerald-400"
           : "bg-zinc-500/10 text-zinc-400"
       )}
@@ -75,39 +76,39 @@ function StatusBadge({ status }: { status: "Active" | "Paused" }) {
       <span
         className={clsx(
           "h-1.5 w-1.5 rounded-full",
-          status === "Active" ? "bg-emerald-400" : "bg-zinc-500"
+          isActive ? "bg-emerald-400" : "bg-zinc-500"
         )}
       />
-      {status}
+      {label}
     </span>
   );
 }
 
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="h-6 w-48 bg-zinc-800 rounded" />
+      <div className="h-4 w-72 bg-zinc-800/60 rounded" />
+      <div className="border border-border rounded-lg overflow-hidden">
+        <div className="bg-surface p-3 space-y-3">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <div key={i} className="flex gap-4">
+              <div className="h-4 w-44 bg-zinc-800 rounded" />
+              <div className="h-4 w-28 bg-zinc-800/60 rounded" />
+              <div className="h-4 w-16 bg-zinc-800/40 rounded" />
+              <div className="h-4 w-20 bg-zinc-800/40 rounded" />
+              <div className="h-4 w-20 bg-zinc-800/40 rounded" />
+              <div className="h-4 w-16 bg-zinc-800/40 rounded" />
+              <div className="h-4 w-16 bg-zinc-800/40 rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ───────── Color thresholds ───────── */
-
-const colorIncrROAS = (v: number) =>
-  v >= 3.0 ? "text-emerald-400" : v >= 2.0 ? "text-yellow-400" : "text-red-400";
-
-const colorReachCPM = (v: number) =>
-  v <= 12 ? "text-emerald-400" : v <= 22 ? "text-yellow-400" : "text-red-400";
-
-const colorIncrReachPct = (v: number) =>
-  v >= 70 ? "text-emerald-400" : v >= 50 ? "text-yellow-400" : "text-red-400";
-
-const colorCM = (v: number) =>
-  v > 1000 ? "text-emerald-400" : v > 0 ? "text-yellow-400" : "text-red-400";
-
-const colorCMPct = (v: number) =>
-  v >= 30 ? "text-emerald-400" : v >= 15 ? "text-yellow-400" : "text-red-400";
-
-const colorConvRate = (v: number) =>
-  v >= 4 ? "text-emerald-400" : v >= 2.5 ? "text-yellow-400" : "text-red-400";
-
-const colorHookRate = (v: number) =>
-  v >= 30 ? "text-emerald-400" : v >= 20 ? "text-yellow-400" : "text-red-400";
-
-const colorEngDepth = (v: number) =>
-  v >= 4 ? "text-emerald-400" : v >= 2.5 ? "text-yellow-400" : "text-red-400";
 
 const colorROAS = (v: number) =>
   v >= 4 ? "text-emerald-400" : v >= 2.5 ? "text-yellow-400" : "text-red-400";
@@ -115,20 +116,22 @@ const colorROAS = (v: number) =>
 const colorCPA = (v: number) =>
   v <= 30 ? "text-emerald-400" : v <= 50 ? "text-yellow-400" : "text-red-400";
 
-const colorFatigue = (v: number) =>
-  v <= 30 ? "text-emerald-400" : v <= 60 ? "text-yellow-400" : "text-red-400";
+const colorReachCPM = (v: number) =>
+  v <= 12 ? "text-emerald-400" : v <= 22 ? "text-yellow-400" : "text-red-400";
+
+const colorHookRate = (v: number) =>
+  v >= 30 ? "text-emerald-400" : v >= 20 ? "text-yellow-400" : "text-red-400";
+
+const colorEngDepth = (v: number) =>
+  v >= 4 ? "text-emerald-400" : v >= 2.5 ? "text-yellow-400" : "text-red-400";
 
 /* ───────── Row border logic ───────── */
 
-function getRowBorderClass(ad: MetaAd): string {
-  if (ad.contributionMargin < 0) return "border-l-2 border-l-red-500";
-  if (ad.fatigueScore >= 70) return "border-l-2 border-l-yellow-500";
-  if (
-    ad.incrROAS !== null &&
-    ad.incrROAS >= 3.0 &&
-    ad.contributionMargin > 1000
-  )
+function getRowBorderClass(ad: LiveAd): string {
+  if (ad.roas >= 4.0 && ad.revenue > 1000)
     return "border-l-2 border-l-emerald-500";
+  if (ad.roas < 1.0 && ad.spend > 50) return "border-l-2 border-l-red-500";
+  if (ad.frequency > 2.5) return "border-l-2 border-l-yellow-500";
   return "";
 }
 
@@ -136,49 +139,39 @@ function getRowBorderClass(ad: MetaAd): string {
 
 const SORT_PRESETS = [
   { label: "Default", sorting: [] as { id: string; desc: boolean }[] },
+  { label: "Highest ROAS", sorting: [{ id: "roas", desc: true }] },
+  { label: "Lowest CPA", sorting: [{ id: "cpa", desc: false }] },
+  { label: "Most spend", sorting: [{ id: "spend", desc: true }] },
+  { label: "Best hook rate", sorting: [{ id: "hookRate", desc: true }] },
   {
-    label: "Which ads should I scale?",
-    sorting: [{ id: "incrROAS", desc: true }],
-  },
-  {
-    label: "Which ads are wasting money?",
-    sorting: [{ id: "contributionMargin", desc: false }],
-  },
-  { label: "Best hooks?", sorting: [{ id: "hookRate", desc: true }] },
-  {
-    label: "Highest efficiency?",
-    sorting: [{ id: "roas", desc: true }],
-  },
-  {
-    label: "Most fatigued?",
-    sorting: [{ id: "fatigueScore", desc: true }],
-  },
-  {
-    label: "Best engagement?",
+    label: "Best engagement",
     sorting: [{ id: "engagementDepth", desc: true }],
   },
+  { label: "Highest frequency", sorting: [{ id: "frequency", desc: true }] },
 ];
 
 /* ───────── Column definitions ───────── */
 
-const identityColumns: ColumnDef<MetaAd, unknown>[] = [
+const identityColumns: ColumnDef<LiveAd, unknown>[] = [
   {
-    accessorKey: "adName",
+    accessorKey: "name",
     header: "Ad Name",
     size: 220,
     cell: ({ row }) => (
       <span className="font-semibold text-foreground whitespace-nowrap">
-        {row.original.adName}
+        {row.original.name}
       </span>
     ),
     enableHiding: false,
   },
   {
-    accessorKey: "campaignName",
+    accessorKey: "campaignId",
     header: "Campaign",
     size: 160,
     cell: ({ row }) => (
-      <span className="text-muted text-xs">{row.original.campaignName}</span>
+      <span className="text-muted text-xs font-mono">
+        {row.original.campaignId}
+      </span>
     ),
     enableHiding: false,
   },
@@ -189,155 +182,29 @@ const identityColumns: ColumnDef<MetaAd, unknown>[] = [
     cell: ({ row }) => <StatusBadge status={row.original.status} />,
     enableHiding: false,
   },
-  {
-    accessorKey: "daysActive",
-    header: "Days",
-    size: 60,
-    cell: ({ row }) => (
-      <span className="font-mono text-sm text-muted">
-        {row.original.daysActive}
-      </span>
-    ),
-    enableHiding: false,
-  },
-  {
-    accessorKey: "creativeType",
-    header: "Type",
-    size: 80,
-    cell: ({ row }) => (
-      <span className="text-xs text-muted">{row.original.creativeType}</span>
-    ),
-    enableHiding: false,
-  },
 ];
 
-const core7Columns: ColumnDef<MetaAd, unknown>[] = [
+const performanceColumns: ColumnDef<LiveAd, unknown>[] = [
   {
-    accessorKey: "incrROAS",
-    header: "★ Incr. ROAS",
-    size: 110,
-    cell: ({ row }) => (
-      <MetricCell
-        value={row.original.incrROAS}
-        formatted={row.original.incrROAS !== null ? formatMultiplier(row.original.incrROAS) : "—"}
-        trend={row.original.incrROASTrend}
-        colorFn={colorIncrROAS}
-      />
-    ),
-    sortingFn: (a, b) => {
-      const aVal = a.original.incrROAS ?? -Infinity;
-      const bVal = b.original.incrROAS ?? -Infinity;
-      return aVal - bVal;
-    },
-  },
-  {
-    accessorKey: "reachCPM",
-    header: "★ Reach CPM",
-    size: 110,
-    cell: ({ row }) => (
-      <MetricCell
-        value={row.original.reachCPM}
-        formatted={formatCurrency(row.original.reachCPM, 2)}
-        trend={row.original.reachCPMTrend}
-        invertTrend
-        colorFn={colorReachCPM}
-      />
-    ),
-  },
-  {
-    accessorKey: "incrReachPct",
-    header: "★ Incr. Reach %",
-    size: 120,
-    cell: ({ row }) => (
-      <MetricCell
-        value={row.original.incrReachPct}
-        formatted={row.original.incrReachPct !== null ? formatPercent(row.original.incrReachPct) : "—"}
-        trend={row.original.incrReachPctTrend}
-        colorFn={colorIncrReachPct}
-      />
-    ),
-    sortingFn: (a, b) => {
-      const aVal = a.original.incrReachPct ?? -Infinity;
-      const bVal = b.original.incrReachPct ?? -Infinity;
-      return aVal - bVal;
-    },
-  },
-  {
-    accessorKey: "contributionMargin",
-    header: "★ Contrib. Margin",
-    size: 140,
-    cell: ({ row }) => {
-      const ad = row.original;
-      return (
-        <div className="flex flex-col items-end gap-0.5">
-          <span className={clsx("font-mono text-sm", colorCM(ad.contributionMargin))}>
-            {formatCurrency(ad.contributionMargin)}
-          </span>
-          <span className={clsx("font-mono text-[10px]", colorCMPct(ad.cmPct))}>
-            {formatPercent(ad.cmPct)} CM
-          </span>
-          <TrendIndicator value={ad.cmTrend} />
-        </div>
-      );
-    },
-  },
-  {
-    accessorKey: "conversionRate",
-    header: "★ Conv. Rate",
-    size: 110,
-    cell: ({ row }) => (
-      <MetricCell
-        value={row.original.conversionRate}
-        formatted={formatPercent(row.original.conversionRate)}
-        trend={row.original.convRateTrend}
-        colorFn={colorConvRate}
-      />
-    ),
-  },
-  {
-    accessorKey: "aov",
-    header: "AOV",
-    size: 90,
+    accessorKey: "spend",
+    header: "Spend",
+    size: 100,
     cell: ({ row }) => (
       <span className="font-mono text-sm text-foreground">
-        {formatCurrency(row.original.aov)}
+        {formatCurrency(row.original.spend)}
       </span>
     ),
   },
   {
-    accessorKey: "hookRate",
-    header: "★ Hook Rate",
-    size: 110,
+    accessorKey: "revenue",
+    header: "Revenue",
+    size: 100,
     cell: ({ row }) => (
-      <MetricCell
-        value={row.original.hookRate}
-        formatted={row.original.hookRate !== null ? formatPercent(row.original.hookRate) : "—"}
-        trend={row.original.hookRateTrend}
-        colorFn={colorHookRate}
-      />
-    ),
-    sortingFn: (a, b) => {
-      const aVal = a.original.hookRate ?? -Infinity;
-      const bVal = b.original.hookRate ?? -Infinity;
-      return aVal - bVal;
-    },
-  },
-  {
-    accessorKey: "engagementDepth",
-    header: "★ Engage. Depth",
-    size: 120,
-    cell: ({ row }) => (
-      <MetricCell
-        value={row.original.engagementDepth}
-        formatted={row.original.engagementDepth.toFixed(1)}
-        trend={row.original.engDepthTrend}
-        colorFn={colorEngDepth}
-      />
+      <span className="font-mono text-sm text-foreground">
+        {formatCurrency(row.original.revenue)}
+      </span>
     ),
   },
-];
-
-const efficiencyColumns: ColumnDef<MetaAd, unknown>[] = [
   {
     accessorKey: "roas",
     header: "ROAS",
@@ -346,7 +213,6 @@ const efficiencyColumns: ColumnDef<MetaAd, unknown>[] = [
       <MetricCell
         value={row.original.roas}
         formatted={formatMultiplier(row.original.roas)}
-        trend={row.original.roasTrend}
         colorFn={colorROAS}
       />
     ),
@@ -359,12 +225,23 @@ const efficiencyColumns: ColumnDef<MetaAd, unknown>[] = [
       <MetricCell
         value={row.original.cpa}
         formatted={formatCurrency(row.original.cpa, 2)}
-        trend={row.original.cpaTrend}
-        invertTrend
         colorFn={colorCPA}
       />
     ),
   },
+  {
+    accessorKey: "purchases",
+    header: "Purchases",
+    size: 90,
+    cell: ({ row }) => (
+      <span className="font-mono text-sm text-foreground">
+        {formatNumber(row.original.purchases)}
+      </span>
+    ),
+  },
+];
+
+const efficiencyColumns: ColumnDef<LiveAd, unknown>[] = [
   {
     accessorKey: "cpc",
     header: "CPC",
@@ -386,53 +263,6 @@ const efficiencyColumns: ColumnDef<MetaAd, unknown>[] = [
     ),
   },
   {
-    accessorKey: "spend",
-    header: "Spend",
-    size: 100,
-    cell: ({ row }) => (
-      <span className="font-mono text-sm text-foreground">
-        {formatCurrency(row.original.spend)}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "revenue",
-    header: "Revenue",
-    size: 100,
-    cell: ({ row }) => (
-      <span className="font-mono text-sm text-foreground">
-        {formatCurrency(row.original.revenue)}
-      </span>
-    ),
-  },
-];
-
-const lifecycleColumns: ColumnDef<MetaAd, unknown>[] = [
-  {
-    accessorKey: "fatigueScore",
-    header: "Fatigue",
-    size: 90,
-    cell: ({ row }) => {
-      const v = row.original.fatigueScore;
-      return (
-        <div className="flex items-center gap-2">
-          <div className="h-1.5 w-12 rounded-full bg-zinc-800 overflow-hidden">
-            <div
-              className={clsx(
-                "h-full rounded-full",
-                v <= 30 ? "bg-emerald-500" : v <= 60 ? "bg-yellow-500" : "bg-red-500"
-              )}
-              style={{ width: `${v}%` }}
-            />
-          </div>
-          <span className={clsx("font-mono text-xs", colorFatigue(v))}>
-            {v}
-          </span>
-        </div>
-      );
-    },
-  },
-  {
     accessorKey: "frequency",
     header: "Frequency",
     size: 90,
@@ -452,21 +282,80 @@ const lifecycleColumns: ColumnDef<MetaAd, unknown>[] = [
     ),
   },
   {
-    accessorKey: "reachCPMRatio",
-    header: "Reach CPM Ratio",
-    size: 120,
-    cell: ({ row }) => {
-      const v = row.original.reachCPMRatio;
-      return (
-        <span
-          className={clsx(
-            "font-mono text-sm",
-            v <= 1.2 ? "text-emerald-400" : v <= 1.6 ? "text-yellow-400" : "text-red-400"
-          )}
-        >
-          {v.toFixed(2)}x
-        </span>
-      );
+    accessorKey: "reachCPM",
+    header: "Reach CPM",
+    size: 100,
+    cell: ({ row }) => (
+      <MetricCell
+        value={row.original.reachCPM}
+        formatted={formatCurrency(row.original.reachCPM, 2)}
+        colorFn={colorReachCPM}
+      />
+    ),
+  },
+  {
+    accessorKey: "impressions",
+    header: "Impressions",
+    size: 100,
+    cell: ({ row }) => (
+      <span className="font-mono text-sm text-foreground">
+        {formatNumber(row.original.impressions)}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "reach",
+    header: "Reach",
+    size: 100,
+    cell: ({ row }) => (
+      <span className="font-mono text-sm text-foreground">
+        {formatNumber(row.original.reach)}
+      </span>
+    ),
+  },
+];
+
+const creativeColumns: ColumnDef<LiveAd, unknown>[] = [
+  {
+    accessorKey: "hookRate",
+    header: "Hook Rate",
+    size: 100,
+    cell: ({ row }) => (
+      <MetricCell
+        value={row.original.hookRate}
+        formatted={
+          row.original.hookRate !== null
+            ? formatPercent(row.original.hookRate)
+            : "--"
+        }
+        colorFn={colorHookRate}
+      />
+    ),
+    sortingFn: (a, b) => {
+      const aVal = a.original.hookRate ?? -Infinity;
+      const bVal = b.original.hookRate ?? -Infinity;
+      return aVal - bVal;
+    },
+  },
+  {
+    accessorKey: "engagementDepth",
+    header: "Engage. Depth",
+    size: 110,
+    cell: ({ row }) => (
+      <MetricCell
+        value={row.original.engagementDepth}
+        formatted={
+          row.original.engagementDepth !== null
+            ? row.original.engagementDepth.toFixed(1)
+            : "--"
+        }
+        colorFn={colorEngDepth}
+      />
+    ),
+    sortingFn: (a, b) => {
+      const aVal = a.original.engagementDepth ?? -Infinity;
+      const bVal = b.original.engagementDepth ?? -Infinity;
+      return aVal - bVal;
     },
   },
 ];
@@ -474,32 +363,116 @@ const lifecycleColumns: ColumnDef<MetaAd, unknown>[] = [
 /* ───────── Page Component ───────── */
 
 export default function MetaAdsPage() {
-  const [showCore7, setShowCore7] = useState(true);
+  const [ads, setAds] = useState<LiveAd[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [showPerformance, setShowPerformance] = useState(true);
   const [showEfficiency, setShowEfficiency] = useState(true);
-  const [showLifecycle, setShowLifecycle] = useState(false);
+  const [showCreative, setShowCreative] = useState(false);
   const [sortPreset, setSortPreset] = useState(0);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchAds() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/meta?level=ads&date_preset=last_7d");
+        if (!res.ok) {
+          throw new Error(`API error: ${res.status} ${res.statusText}`);
+        }
+        const data = await res.json();
+        if (!cancelled) {
+          setAds(data.ads ?? []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error ? err.message : "Failed to fetch ads data"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+    fetchAds();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const columns = useMemo(() => {
-    const cols: ColumnDef<MetaAd, unknown>[] = [...identityColumns];
-    if (showCore7) cols.push(...core7Columns);
+    const cols: ColumnDef<LiveAd, unknown>[] = [...identityColumns];
+    if (showPerformance) cols.push(...performanceColumns);
     if (showEfficiency) cols.push(...efficiencyColumns);
-    if (showLifecycle) cols.push(...lifecycleColumns);
+    if (showCreative) cols.push(...creativeColumns);
     return cols;
-  }, [showCore7, showEfficiency, showLifecycle]);
+  }, [showPerformance, showEfficiency, showCreative]);
 
   const sortedData = useMemo(() => {
     const preset = SORT_PRESETS[sortPreset];
-    if (!preset || preset.sorting.length === 0) return metaAds;
+    if (!preset || preset.sorting.length === 0) return ads;
 
     const { id, desc } = preset.sorting[0];
-    return [...metaAds].sort((a, b) => {
+    return [...ads].sort((a, b) => {
       const aVal = (a as unknown as Record<string, unknown>)[id];
       const bVal = (b as unknown as Record<string, unknown>)[id];
-      const aNum = aVal === null || aVal === undefined ? (desc ? -Infinity : Infinity) : Number(aVal);
-      const bNum = bVal === null || bVal === undefined ? (desc ? -Infinity : Infinity) : Number(bVal);
+      const aNum =
+        aVal === null || aVal === undefined
+          ? desc
+            ? -Infinity
+            : Infinity
+          : Number(aVal);
+      const bNum =
+        bVal === null || bVal === undefined
+          ? desc
+            ? -Infinity
+            : Infinity
+          : Number(bVal);
       return desc ? bNum - aNum : aNum - bNum;
     });
-  }, [sortPreset]);
+  }, [sortPreset, ads]);
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">
+            All Meta Ads
+          </h1>
+          <p className="text-xs text-muted mt-1">Loading live data...</p>
+        </div>
+        <LoadingSkeleton />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">
+            All Meta Ads
+          </h1>
+        </div>
+        <div className="border border-red-500/30 bg-red-500/5 rounded-lg px-4 py-6 text-center">
+          <p className="text-red-400 text-sm font-medium">
+            Failed to load ads data
+          </p>
+          <p className="text-red-400/60 text-xs mt-1">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-3 px-3 py-1.5 text-xs bg-zinc-800 border border-border rounded-md text-zinc-300 hover:bg-zinc-700 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -509,7 +482,7 @@ export default function MetaAdsPage() {
           All Meta Ads
         </h1>
         <p className="text-xs text-muted mt-1">
-          Granular performance for every active and paused ad — Core 7 metrics with trend indicators
+          Live performance data for all ads — last 7 days
         </p>
       </div>
 
@@ -523,11 +496,11 @@ export default function MetaAdsPage() {
           <label className="flex items-center gap-1.5 text-sm cursor-pointer">
             <input
               type="checkbox"
-              checked={showCore7}
-              onChange={(e) => setShowCore7(e.target.checked)}
+              checked={showPerformance}
+              onChange={(e) => setShowPerformance(e.target.checked)}
               className="rounded border-zinc-600 bg-zinc-800 text-accent focus:ring-accent focus:ring-offset-0 h-3.5 w-3.5"
             />
-            <span className="text-zinc-300">Core 7 Metrics</span>
+            <span className="text-zinc-300">Performance</span>
           </label>
           <label className="flex items-center gap-1.5 text-sm cursor-pointer">
             <input
@@ -541,11 +514,11 @@ export default function MetaAdsPage() {
           <label className="flex items-center gap-1.5 text-sm cursor-pointer">
             <input
               type="checkbox"
-              checked={showLifecycle}
-              onChange={(e) => setShowLifecycle(e.target.checked)}
+              checked={showCreative}
+              onChange={(e) => setShowCreative(e.target.checked)}
               className="rounded border-zinc-600 bg-zinc-800 text-accent focus:ring-accent focus:ring-offset-0 h-3.5 w-3.5"
             />
-            <span className="text-zinc-300">Lifecycle</span>
+            <span className="text-zinc-300">Creative</span>
           </label>
         </div>
 
@@ -576,11 +549,11 @@ export default function MetaAdsPage() {
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block h-3 w-0.5 rounded bg-yellow-500" />
-          Fatiguing
+          High frequency
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block h-3 w-0.5 rounded bg-red-500" />
-          Negative CM
+          Low ROAS
         </span>
         <span className="flex items-center gap-1 ml-4">
           <span className="text-emerald-400">●</span> Good
@@ -609,11 +582,11 @@ export default function MetaAdsPage() {
                       style={{
                         width: col.size,
                         position:
-                          key === "adName" ? "sticky" : undefined,
-                        left: key === "adName" ? 0 : undefined,
-                        zIndex: key === "adName" ? 10 : undefined,
+                          key === "name" ? "sticky" : undefined,
+                        left: key === "name" ? 0 : undefined,
+                        zIndex: key === "name" ? 10 : undefined,
                         background:
-                          key === "adName" ? "var(--surface)" : undefined,
+                          key === "name" ? "var(--surface)" : undefined,
                       }}
                     >
                       {header}
@@ -623,57 +596,73 @@ export default function MetaAdsPage() {
               </tr>
             </thead>
             <tbody>
-              {sortedData.map((ad) => (
-                <tr
-                  key={ad.id}
-                  className={clsx(
-                    "border-b border-border/50 data-row transition-colors",
-                    getRowBorderClass(ad)
-                  )}
-                >
-                  {columns.map((col) => {
-                    const key =
-                      "accessorKey" in col
-                        ? String(col.accessorKey)
-                        : "";
-                    const cellFn = col.cell;
-                    const isSticky = key === "adName";
-
-                    // Build a minimal context for the cell renderer
-                    const fakeRow = { original: ad } as { original: MetaAd };
-                    const rendered =
-                      typeof cellFn === "function"
-                        ? cellFn({
-                            row: fakeRow,
-                            getValue: () =>
-                              (ad as unknown as Record<string, unknown>)[key],
-                            renderValue: () =>
-                              (ad as unknown as Record<string, unknown>)[key],
-                          } as never)
-                        : (ad as unknown as Record<string, unknown>)[key];
-
-                    return (
-                      <td
-                        key={key}
-                        className={clsx(
-                          "px-3 py-2.5 whitespace-nowrap",
-                          isSticky && "sticky left-0 z-10 bg-[#0A0A0B]"
-                        )}
-                        style={{ width: col.size }}
-                      >
-                        {rendered as React.ReactNode}
-                      </td>
-                    );
-                  })}
+              {sortedData.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={columns.length}
+                    className="px-3 py-8 text-center text-zinc-500 text-sm"
+                  >
+                    No ads found for the selected period.
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                sortedData.map((ad) => (
+                  <tr
+                    key={ad.id}
+                    className={clsx(
+                      "border-b border-border/50 data-row transition-colors",
+                      getRowBorderClass(ad)
+                    )}
+                  >
+                    {columns.map((col) => {
+                      const key =
+                        "accessorKey" in col
+                          ? String(col.accessorKey)
+                          : "";
+                      const cellFn = col.cell;
+                      const isSticky = key === "name";
+
+                      const fakeRow = { original: ad } as {
+                        original: LiveAd;
+                      };
+                      const rendered =
+                        typeof cellFn === "function"
+                          ? cellFn({
+                              row: fakeRow,
+                              getValue: () =>
+                                (ad as unknown as Record<string, unknown>)[
+                                  key
+                                ],
+                              renderValue: () =>
+                                (ad as unknown as Record<string, unknown>)[
+                                  key
+                                ],
+                            } as never)
+                          : (ad as unknown as Record<string, unknown>)[key];
+
+                      return (
+                        <td
+                          key={key}
+                          className={clsx(
+                            "px-3 py-2.5 whitespace-nowrap",
+                            isSticky && "sticky left-0 z-10 bg-[#0A0A0B]"
+                          )}
+                          style={{ width: col.size }}
+                        >
+                          {rendered as React.ReactNode}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
       <div className="text-xs text-zinc-600 px-1">
-        {sortedData.length} ads total &middot; ★ = Core 7 metric
+        {sortedData.length} ads total
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import {
   AreaChart,
   Area,
@@ -11,13 +12,48 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import {
-  profitabilityData,
-  profitabilityTrend,
-  channelEfficiency,
-} from "@/lib/mock-data";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import clsx from "clsx";
+
+/* ── API response types ── */
+interface ProfitabilitySummary {
+  grossRevenue: number;
+  refunds: number;
+  netRevenue: number;
+  cogs: number;
+  cogsPct: number;
+  fulfillment: number;
+  processing: number;
+  grossProfit: number;
+  metaSpend: number;
+  googleSpend: number;
+  contributionMargin: number;
+  cmPct: number;
+}
+
+interface CMTrendPoint {
+  date: string;
+  cm: number;
+  cmPct: number;
+}
+
+interface ChannelRow {
+  channel: string;
+  color: string;
+  spend: number;
+  revenue: number;
+  roas: number | null;
+  cpa: number;
+  cm: number;
+  cmPct: number;
+}
+
+interface ProfitabilityResponse {
+  summary: ProfitabilitySummary;
+  previous: ProfitabilitySummary;
+  cmTrend: CMTrendPoint[];
+  channels: ChannelRow[];
+}
 
 /* ── Format helpers ── */
 function formatDollar(value: number): string {
@@ -33,22 +69,21 @@ function formatDollar(value: number): string {
 interface WaterfallRow {
   label: string;
   sublabel?: string;
-  left: number; // percentage from left edge
-  width: number; // bar width as percentage
-  value: number; // signed dollar value
+  left: number;
+  width: number;
+  value: number;
   color: string;
   type: "total" | "subtotal" | "deduction";
   section?: "start" | "end";
 }
 
-function buildWaterfallRows(): WaterfallRow[] {
-  const d = profitabilityData;
+function buildWaterfallRows(d: ProfitabilitySummary): WaterfallRow[] {
   const max = d.grossRevenue;
   const pct = (v: number) => (v / max) * 100;
   const rows: WaterfallRow[] = [];
   let running: number;
 
-  // ── Section 1: Revenue
+  // Section 1: Revenue
   running = d.grossRevenue;
   rows.push({
     label: "Gross Revenue",
@@ -79,7 +114,7 @@ function buildWaterfallRows(): WaterfallRow[] {
     section: "end",
   });
 
-  // ── Section 2: Cost of Goods & Ops
+  // Section 2: Cost of Goods & Ops
   running = d.netRevenue;
   running -= d.cogs;
   rows.push({
@@ -122,7 +157,7 @@ function buildWaterfallRows(): WaterfallRow[] {
     section: "end",
   });
 
-  // ── Section 3: Ad Spend
+  // Section 3: Ad Spend
   running = d.grossProfit;
   running -= d.metaSpend;
   rows.push({
@@ -162,27 +197,28 @@ function buildWaterfallRows(): WaterfallRow[] {
 /* ── P&L rows ── */
 interface PLRow {
   label: string;
-  today: number;
-  avg7d: number;
-  avg28d: number;
+  current: number;
+  previous: number;
   isSubtotal?: boolean;
   isCurrency?: boolean;
 }
 
-function buildPLRows(): PLRow[] {
-  const d = profitabilityData;
+function buildPLRows(
+  d: ProfitabilitySummary,
+  prev: ProfitabilitySummary
+): PLRow[] {
   return [
-    { label: "Gross Revenue", today: d.grossRevenue, avg7d: d.avg7d.grossRevenue, avg28d: d.avg28d.grossRevenue, isCurrency: true },
-    { label: "  Refunds", today: -d.refunds, avg7d: -d.avg7d.refunds, avg28d: -d.avg28d.refunds, isCurrency: true },
-    { label: "= Net Revenue", today: d.netRevenue, avg7d: d.avg7d.netRevenue, avg28d: d.avg28d.netRevenue, isSubtotal: true, isCurrency: true },
-    { label: "  COGS", today: -d.cogs, avg7d: -d.avg7d.cogs, avg28d: -d.avg28d.cogs, isCurrency: true },
-    { label: "  Fulfillment", today: -d.fulfillment, avg7d: -d.avg7d.fulfillment, avg28d: -d.avg28d.fulfillment, isCurrency: true },
-    { label: "  Processing", today: -d.processing, avg7d: -d.avg7d.processing, avg28d: -d.avg28d.processing, isCurrency: true },
-    { label: "= Gross Profit", today: d.grossProfit, avg7d: d.avg7d.grossProfit, avg28d: d.avg28d.grossProfit, isSubtotal: true, isCurrency: true },
-    { label: "  Meta Spend", today: -d.metaSpend, avg7d: -d.avg7d.metaSpend, avg28d: -d.avg28d.metaSpend, isCurrency: true },
-    { label: "  Google Spend", today: -d.googleSpend, avg7d: -d.avg7d.googleSpend, avg28d: -d.avg28d.googleSpend, isCurrency: true },
-    { label: "= Contribution Margin", today: d.contributionMargin, avg7d: d.avg7d.contributionMargin, avg28d: d.avg28d.contributionMargin, isSubtotal: true, isCurrency: true },
-    { label: "  CM %", today: d.cmPct, avg7d: d.avg7d.cmPct, avg28d: d.avg28d.cmPct },
+    { label: "Gross Revenue", current: d.grossRevenue, previous: prev.grossRevenue, isCurrency: true },
+    { label: "  Refunds", current: -d.refunds, previous: -prev.refunds, isCurrency: true },
+    { label: "= Net Revenue", current: d.netRevenue, previous: prev.netRevenue, isSubtotal: true, isCurrency: true },
+    { label: "  COGS", current: -d.cogs, previous: -prev.cogs, isCurrency: true },
+    { label: "  Fulfillment", current: -d.fulfillment, previous: -prev.fulfillment, isCurrency: true },
+    { label: "  Processing", current: -d.processing, previous: -prev.processing, isCurrency: true },
+    { label: "= Gross Profit", current: d.grossProfit, previous: prev.grossProfit, isSubtotal: true, isCurrency: true },
+    { label: "  Meta Spend", current: -d.metaSpend, previous: -prev.metaSpend, isCurrency: true },
+    { label: "  Google Spend", current: -d.googleSpend, previous: -prev.googleSpend, isCurrency: true },
+    { label: "= Contribution Margin", current: d.contributionMargin, previous: prev.contributionMargin, isSubtotal: true, isCurrency: true },
+    { label: "  CM %", current: d.cmPct, previous: prev.cmPct },
   ];
 }
 
@@ -201,14 +237,148 @@ function deltaColor(current: number, prior: number, invert = false): string {
   return isPositive ? "text-emerald-400" : "text-red-400";
 }
 
+/* ── Loading Skeleton ── */
+function Skeleton({ className }: { className?: string }) {
+  return (
+    <div
+      className={clsx(
+        "animate-pulse rounded bg-zinc-800/60",
+        className
+      )}
+    />
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <Skeleton className="h-6 w-60 mb-2" />
+        <Skeleton className="h-3 w-96" />
+      </div>
+      {/* Summary cards */}
+      <div className="flex gap-3">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="flex-1 rounded-lg border border-border bg-surface p-4 space-y-2">
+            <Skeleton className="h-3 w-20 mx-auto" />
+            <Skeleton className="h-7 w-24 mx-auto" />
+            <Skeleton className="h-3 w-16 mx-auto" />
+          </div>
+        ))}
+      </div>
+      {/* Waterfall */}
+      <div className="rounded-lg border border-border bg-surface p-5 space-y-3">
+        <Skeleton className="h-4 w-56" />
+        {[...Array(10)].map((_, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-6 flex-1" />
+            <Skeleton className="h-4 w-16" />
+          </div>
+        ))}
+      </div>
+      {/* P&L table */}
+      <div className="rounded-lg border border-border bg-surface p-5 space-y-3">
+        <Skeleton className="h-4 w-64" />
+        {[...Array(11)].map((_, i) => (
+          <Skeleton key={i} className="h-5 w-full" />
+        ))}
+      </div>
+      {/* Trend chart */}
+      <div className="rounded-lg border border-border bg-surface p-5">
+        <Skeleton className="h-4 w-64 mb-4" />
+        <Skeleton className="h-[300px] w-full" />
+      </div>
+      {/* Channel table */}
+      <div className="rounded-lg border border-border bg-surface p-5 space-y-3">
+        <Skeleton className="h-4 w-56" />
+        {[...Array(5)].map((_, i) => (
+          <Skeleton key={i} className="h-5 w-full" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Page ── */
 export default function ProfitabilityPage() {
-  const waterfallRows = buildWaterfallRows();
-  const plRows = buildPLRows();
-  const d = profitabilityData;
+  const [data, setData] = useState<ProfitabilityResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const efficiencyTotal = channelEfficiency.reduce(
-    (acc, ch) => ({ spend: acc.spend + ch.spend, revenue: acc.revenue + ch.revenue, cm: acc.cm + ch.cm }),
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchData() {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch("/api/profitability?days=7");
+        if (!res.ok) {
+          throw new Error(`Failed to load profitability data (${res.status})`);
+        }
+        const json: ProfitabilityResponse = await res.json();
+        if (!cancelled) {
+          setData(json);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "An unexpected error occurred");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading) {
+    return <LoadingSkeleton />;
+  }
+
+  if (error || !data) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-lg font-semibold text-zinc-100">
+            Profitability &mdash; P&amp;L View
+          </h1>
+        </div>
+        <div className="rounded-lg border border-red-500/30 bg-red-500/[0.06] p-6 text-center">
+          <p className="text-sm text-red-400 font-medium mb-1">
+            Failed to load profitability data
+          </p>
+          <p className="text-xs text-zinc-500">
+            {error || "No data returned from the server."}
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-3 text-xs text-zinc-400 hover:text-zinc-200 underline underline-offset-2 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const d = data.summary;
+  const prev = data.previous;
+  const waterfallRows = buildWaterfallRows(d);
+  const plRows = buildPLRows(d, prev);
+
+  const efficiencyTotal = data.channels.reduce(
+    (acc, ch) => ({
+      spend: acc.spend + ch.spend,
+      revenue: acc.revenue + ch.revenue,
+      cm: acc.cm + ch.cm,
+    }),
     { spend: 0, revenue: 0, cm: 0 }
   );
 
@@ -412,24 +582,23 @@ export default function ProfitabilityPage() {
       {/* ── P&L Breakdown Table ── */}
       <div className="rounded-lg border border-border bg-surface p-5">
         <h3 className="mb-4 text-sm font-medium text-zinc-400">
-          P&amp;L Breakdown — Period Comparison
+          P&amp;L Breakdown &mdash; Period Comparison
         </h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-[11px] uppercase tracking-wider text-zinc-500">
                 <th className="pb-3 pr-4 font-medium">Line Item</th>
-                <th className="pb-3 pr-4 text-right font-medium">Today</th>
+                <th className="pb-3 pr-4 text-right font-medium">Current</th>
                 <th className="pb-3 pr-4 text-right font-medium">% of Gross</th>
-                <th className="pb-3 pr-4 text-right font-medium">7d Avg</th>
-                <th className="pb-3 pr-4 text-right font-medium">28d Avg</th>
-                <th className="pb-3 text-right font-medium">vs 7d</th>
+                <th className="pb-3 pr-4 text-right font-medium">Previous</th>
+                <th className="pb-3 text-right font-medium">vs Prior</th>
               </tr>
             </thead>
             <tbody>
               {plRows.map((row) => {
                 const pctOfGross = row.isCurrency
-                  ? ((Math.abs(row.today) / d.grossRevenue) * 100).toFixed(1)
+                  ? ((Math.abs(row.current) / d.grossRevenue) * 100).toFixed(1)
                   : null;
                 return (
                   <tr
@@ -452,37 +621,32 @@ export default function ProfitabilityPage() {
                     <td
                       className={clsx(
                         "py-2.5 pr-4 text-right font-mono",
-                        row.isSubtotal && row.today > 0 && "text-emerald-400"
+                        row.isSubtotal && row.current > 0 && "text-emerald-400"
                       )}
                     >
                       {row.isCurrency
-                        ? formatCurrency(row.today)
-                        : formatPercent(row.today)}
+                        ? formatCurrency(row.current)
+                        : formatPercent(row.current)}
                     </td>
                     <td className="py-2.5 pr-4 text-right font-mono text-zinc-600 text-xs">
-                      {pctOfGross !== null ? `${row.today < 0 ? "-" : ""}${pctOfGross}%` : ""}
+                      {pctOfGross !== null ? `${row.current < 0 ? "-" : ""}${pctOfGross}%` : ""}
                     </td>
                     <td className="py-2.5 pr-4 text-right font-mono text-zinc-500 text-xs">
                       {row.isCurrency
-                        ? formatCurrency(row.avg7d)
-                        : formatPercent(row.avg7d)}
-                    </td>
-                    <td className="py-2.5 pr-4 text-right font-mono text-zinc-500 text-xs">
-                      {row.isCurrency
-                        ? formatCurrency(row.avg28d)
-                        : formatPercent(row.avg28d)}
+                        ? formatCurrency(row.previous)
+                        : formatPercent(row.previous)}
                     </td>
                     <td
                       className={clsx(
                         "py-2.5 text-right font-mono text-xs",
                         deltaColor(
-                          row.today,
-                          row.avg7d,
-                          !row.isSubtotal && row.today < 0
+                          row.current,
+                          row.previous,
+                          !row.isSubtotal && row.current < 0
                         )
                       )}
                     >
-                      {deltaPercent(Math.abs(row.today), Math.abs(row.avg7d))}
+                      {deltaPercent(Math.abs(row.current), Math.abs(row.previous))}
                     </td>
                   </tr>
                 );
@@ -495,11 +659,11 @@ export default function ProfitabilityPage() {
       {/* ── Contribution Margin Trend ── */}
       <div className="rounded-lg border border-border bg-surface p-5">
         <h3 className="mb-4 text-sm font-medium text-zinc-400">
-          Contribution Margin Trend &mdash; Last 28 Days
+          Contribution Margin Trend
         </h3>
         <ResponsiveContainer width="100%" height={300}>
           <ComposedChart
-            data={profitabilityTrend}
+            data={data.cmTrend}
             margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
           >
             <defs>
@@ -609,7 +773,7 @@ export default function ProfitabilityPage() {
               </tr>
             </thead>
             <tbody>
-              {channelEfficiency.map((ch) => {
+              {data.channels.map((ch) => {
                 const cmShare =
                   efficiencyTotal.cm > 0
                     ? ((ch.cm / efficiencyTotal.cm) * 100).toFixed(1)
@@ -631,7 +795,7 @@ export default function ProfitabilityPage() {
                       </span>
                     </td>
                     <td className="py-2.5 pr-4 text-right font-mono text-xs">
-                      {ch.spend > 0 ? formatCurrency(ch.spend) : <span className="text-zinc-600">—</span>}
+                      {ch.spend > 0 ? formatCurrency(ch.spend) : <span className="text-zinc-600">&mdash;</span>}
                     </td>
                     <td className="py-2.5 pr-4 text-right font-mono text-xs">
                       {formatCurrency(ch.revenue)}
@@ -642,11 +806,11 @@ export default function ProfitabilityPage() {
                           {ch.roas.toFixed(2)}x
                         </span>
                       ) : (
-                        <span className="text-zinc-600">∞</span>
+                        <span className="text-zinc-600">&infin;</span>
                       )}
                     </td>
                     <td className="py-2.5 pr-4 text-right font-mono text-xs">
-                      {ch.cpa > 0 ? formatCurrency(ch.cpa, 2) : <span className="text-zinc-600">—</span>}
+                      {ch.cpa > 0 ? formatCurrency(ch.cpa, 2) : <span className="text-zinc-600">&mdash;</span>}
                     </td>
                     <td className="py-2.5 pr-4 text-right font-mono text-xs text-emerald-400">
                       {formatCurrency(ch.cm)}
@@ -686,10 +850,10 @@ export default function ProfitabilityPage() {
                 <td className="py-2.5 pr-4 text-right font-mono text-xs">
                   {efficiencyTotal.spend > 0
                     ? `${(efficiencyTotal.revenue / efficiencyTotal.spend).toFixed(2)}x`
-                    : "—"}
+                    : "\u2014"}
                 </td>
                 <td className="py-2.5 pr-4 text-right font-mono text-xs text-zinc-500">
-                  —
+                  &mdash;
                 </td>
                 <td className="py-2.5 pr-4 text-right font-mono text-xs text-emerald-400">
                   {formatCurrency(efficiencyTotal.cm)}

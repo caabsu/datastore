@@ -1,28 +1,105 @@
 "use client";
 
-import { creativeMatrix } from "@/lib/mock-data";
+import { useState, useEffect } from "react";
 import { formatCurrency, formatPercent, formatMultiplier } from "@/lib/format";
 import clsx from "clsx";
 
+/* ───────── Types ───────── */
+
+interface AdRow {
+  id: string;
+  name: string;
+  adsetId: string;
+  campaignId: string;
+  status: string;
+  creative: unknown;
+  spend: number;
+  impressions: number;
+  reach: number;
+  clicks: number;
+  purchases: number;
+  revenue: number;
+  roas: number;
+  cpa: number;
+  frequency: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+  reachCPM: number;
+  linkClicks: number;
+  addToCart: number;
+  initiateCheckout: number;
+  hookRate: number;
+  engagementDepth: number;
+  date_start: string;
+  date_stop: string;
+}
+
+interface CreativeRow {
+  id: string;
+  name: string;
+  type: string;
+  reachCPM: number;
+  roas: number;
+  cpa: number;
+  hookRate: number | null;
+  engagementDepth: number;
+  ctr: number;
+  score: number;
+}
+
+/* ───────── Derive creative type from ad name ───────── */
+
+function deriveType(name: string): string {
+  const lower = name.toLowerCase();
+  if (/video|ugc|reel/.test(lower)) return "Video";
+  if (/carousel|caro/.test(lower)) return "Carousel";
+  return "Image";
+}
+
 /* ───────── Percentile helpers ───────── */
 
-function getPercentileRank(values: (number | null)[], value: number | null): "top" | "mid" | "bottom" | null {
-  if (value === null) return null;
-  const filtered = values.filter((v): v is number => v !== null);
+function getPercentileRank(
+  values: (number | null)[],
+  value: number | null
+): "top" | "mid" | "bottom" | null {
+  if (value === null || value === undefined) return null;
+  const filtered = values.filter((v): v is number => v !== null && v !== undefined);
   if (filtered.length === 0) return null;
   const sorted = [...filtered].sort((a, b) => a - b);
-  const rank = sorted.indexOf(value) / (sorted.length - 1);
+  const idx = sorted.indexOf(value);
+  if (idx === -1) {
+    // Value may not be exactly in the array due to floating point;
+    // find closest position
+    const pos = sorted.filter((v) => v < value).length;
+    const rank = sorted.length > 1 ? pos / (sorted.length - 1) : 0.5;
+    if (rank >= 0.75) return "top";
+    if (rank >= 0.25) return "mid";
+    return "bottom";
+  }
+  const rank = sorted.length > 1 ? idx / (sorted.length - 1) : 0.5;
   if (rank >= 0.75) return "top";
   if (rank >= 0.25) return "mid";
   return "bottom";
 }
 
-function getPercentileRankInverse(values: (number | null)[], value: number | null): "top" | "mid" | "bottom" | null {
-  if (value === null) return null;
-  const filtered = values.filter((v): v is number => v !== null);
+function getPercentileRankInverse(
+  values: (number | null)[],
+  value: number | null
+): "top" | "mid" | "bottom" | null {
+  if (value === null || value === undefined) return null;
+  const filtered = values.filter((v): v is number => v !== null && v !== undefined);
   if (filtered.length === 0) return null;
   const sorted = [...filtered].sort((a, b) => b - a);
-  const rank = sorted.indexOf(value) / (sorted.length - 1);
+  const idx = sorted.indexOf(value);
+  if (idx === -1) {
+    const pos = sorted.filter((v) => v > value).length;
+    const rank = sorted.length > 1 ? pos / (sorted.length - 1) : 0.5;
+    if (rank >= 0.75) return "top";
+    if (rank >= 0.25) return "mid";
+    return "bottom";
+  }
+  const rank = sorted.length > 1 ? idx / (sorted.length - 1) : 0.5;
   if (rank >= 0.75) return "top";
   if (rank >= 0.25) return "mid";
   return "bottom";
@@ -60,16 +137,80 @@ function RankedCell({
   );
 }
 
-/* ───────── Precompute column values for percentile ranking ───────── */
+/* ───────── Score computation ───────── */
 
-const allIncrROAS = creativeMatrix.map((c) => c.incrROAS);
-const allReachCPM = creativeMatrix.map((c) => c.reachCPM);
-const allIncrReachPct = creativeMatrix.map((c) => c.incrReachPct);
-const allCM = creativeMatrix.map((c) => c.cm);
-const allConvRate = creativeMatrix.map((c) => c.convRate);
-const allHookRate = creativeMatrix.map((c) => c.hookRate);
-const allEngDepth = creativeMatrix.map((c) => c.engDepth);
-const allScores = creativeMatrix.map((c) => c.score);
+/**
+ * Compute percentile position (0–100) for a value in a list.
+ * For "higher is better" metrics.
+ */
+function percentilePosition(values: number[], value: number): number {
+  if (values.length <= 1) return 50;
+  const sorted = [...values].sort((a, b) => a - b);
+  const below = sorted.filter((v) => v < value).length;
+  return (below / (sorted.length - 1)) * 100;
+}
+
+/**
+ * Inverse percentile position (0–100) — lower value = higher percentile.
+ * For "lower is better" metrics (reachCPM, cpa).
+ */
+function percentilePositionInverse(values: number[], value: number): number {
+  if (values.length <= 1) return 50;
+  const sorted = [...values].sort((a, b) => b - a);
+  const below = sorted.filter((v) => v > value).length;
+  return (below / (sorted.length - 1)) * 100;
+}
+
+function computeScores(ads: AdRow[]): CreativeRow[] {
+  const allRoas = ads.map((a) => a.roas);
+  const allReachCPM = ads.map((a) => a.reachCPM);
+  const allCPA = ads.map((a) => a.cpa);
+  const allHookRate = ads.map((a) => a.hookRate).filter((v): v is number => v != null);
+  const allEngDepth = ads.map((a) => a.engagementDepth);
+  const allCTR = ads.map((a) => a.ctr);
+
+  return ads.map((ad) => {
+    const metrics: number[] = [];
+
+    // ROAS — higher is better
+    metrics.push(percentilePosition(allRoas, ad.roas));
+
+    // Reach CPM — lower is better
+    metrics.push(percentilePositionInverse(allReachCPM, ad.reachCPM));
+
+    // CPA — lower is better
+    metrics.push(percentilePositionInverse(allCPA, ad.cpa));
+
+    // Hook rate — higher is better (may be null)
+    if (ad.hookRate != null && allHookRate.length > 0) {
+      metrics.push(percentilePosition(allHookRate, ad.hookRate));
+    }
+
+    // Engagement depth — higher is better
+    metrics.push(percentilePosition(allEngDepth, ad.engagementDepth));
+
+    // CTR — higher is better
+    metrics.push(percentilePosition(allCTR, ad.ctr));
+
+    const score =
+      metrics.length > 0
+        ? Math.round(metrics.reduce((a, b) => a + b, 0) / metrics.length)
+        : 0;
+
+    return {
+      id: ad.id,
+      name: ad.name,
+      type: deriveType(ad.name),
+      reachCPM: ad.reachCPM,
+      roas: ad.roas,
+      cpa: ad.cpa,
+      hookRate: ad.hookRate ?? null,
+      engagementDepth: ad.engagementDepth,
+      ctr: ad.ctr,
+      score,
+    };
+  });
+}
 
 /* ───────── Score bar color ───────── */
 
@@ -85,22 +226,88 @@ function scoreTextColor(score: number): string {
   return "text-red-400";
 }
 
-/* ───────── Insights (hardcoded from mock data analysis) ───────── */
+/* ───────── Loading skeleton ───────── */
 
-const insights = [
-  "\"Influencer Testimonial\" scores highest (84/100) with the best hook rate (42.5%) and engagement depth (6.2) of any ad. Early signs point to strong creative-market fit — prioritize budget scaling.",
-  "\"Lifestyle Carousel\" achieves the highest Incr. ROAS (4.1x) despite being a non-video format, proving that well-structured carousels can outperform video on incrementality.",
-  "\"UGC Summer Vibes\" is the worst performer (12/100) with a fatigue score of 85 and negative contribution margin (-$42). Its reach CPM ($28.60) is 2x the account average — pause immediately.",
-  "\"Unboxing Experience\" (Paused) was correctly paused — its 92 fatigue score and -$180 CM confirm creative exhaustion after 42 days. Avoid reactivation.",
-  "Video creatives dominate hook rate but images/carousels show higher conversion rates in retargeting contexts. Consider a mixed creative strategy by funnel stage.",
-  "Prospecting ads with Incr. Reach % above 70% (\"Lifestyle Carousel\" at 78%, \"UGC Spring\" at 72%, \"Influencer Testimonial\" at 82%) correlate with positive contribution margin — use incremental reach as a leading indicator for scaling decisions.",
-];
+function TableSkeleton() {
+  return (
+    <div className="bg-surface border border-border rounded-lg overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
+              <th className="px-3 py-2.5">Creative</th>
+              <th className="px-3 py-2.5">Type</th>
+              <th className="px-3 py-2.5 text-right">Reach CPM</th>
+              <th className="px-3 py-2.5 text-right">ROAS</th>
+              <th className="px-3 py-2.5 text-right">CPA</th>
+              <th className="px-3 py-2.5 text-right">Hook Rate</th>
+              <th className="px-3 py-2.5 text-right">Engage Depth</th>
+              <th className="px-3 py-2.5 text-right">CTR</th>
+              <th className="px-3 py-2.5 text-right" style={{ minWidth: 140 }}>
+                Score / 100
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <tr key={i} className="border-b border-border/50">
+                {Array.from({ length: 9 }).map((_, j) => (
+                  <td key={j} className="px-3 py-2.5">
+                    <div className="h-4 rounded bg-zinc-800 animate-pulse" />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 /* ───────── Component ───────── */
 
 export default function CreativeAnalysisPage() {
+  const [creatives, setCreatives] = useState<CreativeRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchAds() {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch("/api/meta?level=ads&date_preset=last_7d");
+        if (!res.ok) {
+          throw new Error(`API returned ${res.status}: ${res.statusText}`);
+        }
+        const data = await res.json();
+        const ads: AdRow[] = data.ads ?? [];
+        if (ads.length === 0) {
+          setCreatives([]);
+        } else {
+          setCreatives(computeScores(ads));
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to fetch ad data");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchAds();
+  }, []);
+
   // Sort by score descending
-  const sorted = [...creativeMatrix].sort((a, b) => b.score - a.score);
+  const sorted = [...creatives].sort((a, b) => b.score - a.score);
+
+  // Precompute column values for percentile ranking
+  const allReachCPM = sorted.map((c) => c.reachCPM);
+  const allRoas = sorted.map((c) => c.roas);
+  const allCPA = sorted.map((c) => c.cpa);
+  const allHookRate = sorted.map((c) => c.hookRate);
+  const allEngDepth = sorted.map((c) => c.engagementDepth);
+  const allCTR = sorted.map((c) => c.ctr);
+  const allScores = sorted.map((c) => c.score);
 
   return (
     <div className="space-y-6">
@@ -129,142 +336,146 @@ export default function CreativeAnalysisPage() {
           <span className="inline-block h-2.5 w-2.5 rounded-sm bg-red-500/30" />
           Bottom quartile
         </span>
-        <span className="ml-2 text-zinc-600">★ = Core 7 metric</span>
       </div>
+
+      {/* Error State */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-sm text-red-400">
+          <p className="font-medium">Failed to load creative data</p>
+          <p className="text-red-400/70 mt-1">{error}</p>
+        </div>
+      )}
+
+      {/* Loading State */}
+      {loading && <TableSkeleton />}
+
+      {/* Empty State */}
+      {!loading && !error && creatives.length === 0 && (
+        <div className="bg-surface border border-border rounded-lg p-8 text-center">
+          <p className="text-sm text-zinc-400">No ad data available for the selected period.</p>
+        </div>
+      )}
 
       {/* Matrix Table */}
-      <div className="bg-surface border border-border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                <th className="px-3 py-2.5 sticky left-0 bg-surface z-10">
-                  Creative
-                </th>
-                <th className="px-3 py-2.5">Type</th>
-                <th className="px-3 py-2.5 text-right">★ Incr ROAS</th>
-                <th className="px-3 py-2.5 text-right">★ Reach CPM</th>
-                <th className="px-3 py-2.5 text-right">★ Incr Reach%</th>
-                <th className="px-3 py-2.5 text-right">★ CM</th>
-                <th className="px-3 py-2.5 text-right">★ Conv Rate</th>
-                <th className="px-3 py-2.5 text-right">★ Hook Rate</th>
-                <th className="px-3 py-2.5 text-right">★ Engage Depth</th>
-                <th className="px-3 py-2.5 text-right" style={{ minWidth: 140 }}>
-                  Score / 100
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((creative) => {
-                const incrROASRank = getPercentileRank(allIncrROAS, creative.incrROAS);
-                const reachCPMRank = getPercentileRankInverse(allReachCPM, creative.reachCPM);
-                const incrReachRank = getPercentileRank(allIncrReachPct, creative.incrReachPct);
-                const cmRank = getPercentileRank(allCM, creative.cm);
-                const convRateRank = getPercentileRank(allConvRate, creative.convRate);
-                const hookRateRank = getPercentileRank(allHookRate, creative.hookRate);
-                const engDepthRank = getPercentileRank(allEngDepth, creative.engDepth);
-                const scoreRank = getPercentileRank(allScores, creative.score);
+      {!loading && !error && creatives.length > 0 && (
+        <div className="bg-surface border border-border rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                  <th className="px-3 py-2.5 sticky left-0 bg-surface z-10">
+                    Creative
+                  </th>
+                  <th className="px-3 py-2.5">Type</th>
+                  <th className="px-3 py-2.5 text-right">Reach CPM</th>
+                  <th className="px-3 py-2.5 text-right">ROAS</th>
+                  <th className="px-3 py-2.5 text-right">CPA</th>
+                  <th className="px-3 py-2.5 text-right">Hook Rate</th>
+                  <th className="px-3 py-2.5 text-right">Engage Depth</th>
+                  <th className="px-3 py-2.5 text-right">CTR</th>
+                  <th className="px-3 py-2.5 text-right" style={{ minWidth: 140 }}>
+                    Score / 100
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((creative) => {
+                  const reachCPMRank = getPercentileRankInverse(allReachCPM, creative.reachCPM);
+                  const roasRank = getPercentileRank(allRoas, creative.roas);
+                  const cpaRank = getPercentileRankInverse(allCPA, creative.cpa);
+                  const hookRateRank = getPercentileRank(allHookRate, creative.hookRate);
+                  const engDepthRank = getPercentileRank(allEngDepth, creative.engagementDepth);
+                  const ctrRank = getPercentileRank(allCTR, creative.ctr);
 
-                return (
-                  <tr
-                    key={creative.name}
-                    className="border-b border-border/50 data-row transition-colors"
-                  >
-                    {/* Name — sticky */}
-                    <td className="px-3 py-2.5 sticky left-0 bg-[#0A0A0B] z-10 font-medium text-foreground whitespace-nowrap">
-                      {creative.name}
-                    </td>
+                  return (
+                    <tr
+                      key={creative.id}
+                      className="border-b border-border/50 data-row transition-colors"
+                    >
+                      {/* Name — sticky */}
+                      <td className="px-3 py-2.5 sticky left-0 bg-[#0A0A0B] z-10 font-medium text-foreground whitespace-nowrap">
+                        {creative.name}
+                      </td>
 
-                    {/* Type */}
-                    <td className="px-3 py-2.5 text-xs text-muted">
-                      {creative.type}
-                    </td>
+                      {/* Type */}
+                      <td className="px-3 py-2.5 text-xs text-muted">
+                        {creative.type}
+                      </td>
 
-                    {/* Incr. ROAS */}
-                    <RankedCell rank={incrROASRank}>
-                      {creative.incrROAS !== null
-                        ? formatMultiplier(creative.incrROAS)
-                        : "—"}
-                    </RankedCell>
+                      {/* Reach CPM (lower is better) */}
+                      <RankedCell rank={reachCPMRank}>
+                        {formatCurrency(creative.reachCPM, 2)}
+                      </RankedCell>
 
-                    {/* Reach CPM (lower is better) */}
-                    <RankedCell rank={reachCPMRank}>
-                      {formatCurrency(creative.reachCPM, 2)}
-                    </RankedCell>
+                      {/* ROAS */}
+                      <RankedCell rank={roasRank}>
+                        {formatMultiplier(creative.roas)}
+                      </RankedCell>
 
-                    {/* Incr. Reach % */}
-                    <RankedCell rank={incrReachRank}>
-                      {creative.incrReachPct !== null
-                        ? formatPercent(creative.incrReachPct)
-                        : "—"}
-                    </RankedCell>
+                      {/* CPA (lower is better) */}
+                      <RankedCell rank={cpaRank}>
+                        {formatCurrency(creative.cpa, 2)}
+                      </RankedCell>
 
-                    {/* CM */}
-                    <RankedCell rank={cmRank}>
-                      {formatCurrency(creative.cm)}
-                    </RankedCell>
+                      {/* Hook Rate */}
+                      <RankedCell rank={hookRateRank}>
+                        {creative.hookRate !== null
+                          ? formatPercent(creative.hookRate)
+                          : "—"}
+                      </RankedCell>
 
-                    {/* Conv Rate */}
-                    <RankedCell rank={convRateRank}>
-                      {formatPercent(creative.convRate)}
-                    </RankedCell>
+                      {/* Engage Depth */}
+                      <RankedCell rank={engDepthRank}>
+                        {creative.engagementDepth.toFixed(1)}
+                      </RankedCell>
 
-                    {/* Hook Rate */}
-                    <RankedCell rank={hookRateRank}>
-                      {creative.hookRate !== null
-                        ? formatPercent(creative.hookRate)
-                        : "—"}
-                    </RankedCell>
+                      {/* CTR */}
+                      <RankedCell rank={ctrRank}>
+                        {formatPercent(creative.ctr)}
+                      </RankedCell>
 
-                    {/* Engage Depth */}
-                    <RankedCell rank={engDepthRank}>
-                      {creative.engDepth.toFixed(1)}
-                    </RankedCell>
-
-                    {/* Score with bar */}
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-2 justify-end">
-                        <div className="h-2 w-16 rounded-full bg-zinc-800 overflow-hidden">
-                          <div
+                      {/* Score with bar */}
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-2 justify-end">
+                          <div className="h-2 w-16 rounded-full bg-zinc-800 overflow-hidden">
+                            <div
+                              className={clsx(
+                                "h-full rounded-full transition-all",
+                                scoreBarColor(creative.score)
+                              )}
+                              style={{ width: `${creative.score}%` }}
+                            />
+                          </div>
+                          <span
                             className={clsx(
-                              "h-full rounded-full transition-all",
-                              scoreBarColor(creative.score)
+                              "font-mono text-sm font-semibold tabular-nums min-w-[2rem] text-right",
+                              scoreTextColor(creative.score)
                             )}
-                            style={{ width: `${creative.score}%` }}
-                          />
+                          >
+                            {creative.score}
+                          </span>
                         </div>
-                        <span
-                          className={clsx(
-                            "font-mono text-sm font-semibold tabular-nums min-w-[2rem] text-right",
-                            scoreTextColor(creative.score)
-                          )}
-                        >
-                          {creative.score}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Insights Section */}
-      <div className="bg-surface border border-border rounded-lg p-5">
-        <h3 className="text-sm font-medium text-zinc-300 mb-3">
-          Creative Insights
-        </h3>
-        <ul className="space-y-2.5">
-          {insights.map((insight, i) => (
-            <li key={i} className="flex gap-2 text-sm text-zinc-400 leading-relaxed">
-              <span className="text-accent mt-0.5 flex-shrink-0">•</span>
-              <span>{insight}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
+      {!loading && !error && creatives.length > 0 && (
+        <div className="bg-surface border border-border rounded-lg p-5">
+          <h3 className="text-sm font-medium text-zinc-300 mb-3">
+            Creative Insights
+          </h3>
+          <p className="text-sm text-zinc-500">
+            Creative insights will be generated from live data.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
