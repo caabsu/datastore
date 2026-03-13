@@ -138,6 +138,8 @@ export async function getOrders(params?: {
   status?: string;
   created_at_min?: string;
   created_at_max?: string;
+  updated_at_min?: string;
+  updated_at_max?: string;
   limit?: number;
 }): Promise<ShopifyOrder[]> {
   const queryParams: Record<string, string> = {
@@ -146,6 +148,8 @@ export async function getOrders(params?: {
   };
   if (params?.created_at_min) queryParams.created_at_min = params.created_at_min;
   if (params?.created_at_max) queryParams.created_at_max = params.created_at_max;
+  if (params?.updated_at_min) queryParams.updated_at_min = params.updated_at_min;
+  if (params?.updated_at_max) queryParams.updated_at_max = params.updated_at_max;
 
   const data = await shopifyFetch<{ orders: ShopifyOrder[] }>("/orders", queryParams);
   return data.orders;

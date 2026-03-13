@@ -37,7 +37,7 @@ export async function GET(request: Request) {
       // Account-level KPIs
       const [insights, dailyInsights] = await Promise.all([
         getAccountInsights(dateParams),
-        getAccountInsights({ date_preset: "last_28d", time_increment: "1" }),
+        getAccountInsights({ ...dateParams, time_increment: "1" }),
       ]);
 
       const kpis = insights.length > 0 ? computeInsightMetrics(insights[0]) : null;

@@ -543,7 +543,7 @@ export default function DashboardPage() {
       {/* Revenue vs Spend Chart */}
       <div className="bg-surface border border-border rounded-lg p-5">
         <h3 className="text-sm font-medium text-zinc-400 mb-4">
-          Revenue vs Ad Spend — Last 7 Days
+          Revenue vs Ad Spend — {days === 1 ? "Today" : `Last ${days} Days`}
         </h3>
         <RevenueChart data={revenueVsSpendData} />
       </div>
@@ -554,7 +554,7 @@ export default function DashboardPage() {
           <h3 className="text-sm font-medium text-zinc-400">
             Channel Performance
           </h3>
-          <span className="text-xs text-zinc-600">Last 7 days</span>
+          <span className="text-xs text-zinc-600">{days === 1 ? "Today" : `Last ${days} days`}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -679,7 +679,7 @@ export default function DashboardPage() {
         {/* ROAS Trend */}
         <div className="bg-surface border border-border rounded-lg p-5">
           <h3 className="text-sm font-medium text-zinc-400 mb-4">
-            Blended ROAS — 7 Day Trend
+            Blended ROAS — {days} Day Trend
           </h3>
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart
