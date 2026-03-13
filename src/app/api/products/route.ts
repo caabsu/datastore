@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getOrders, getProducts } from "@/lib/shopify";
+import { getOrders, getProducts, computeProductAnalytics } from "@/lib/shopify";
 
 export async function GET(request: Request) {
   try {
@@ -29,13 +29,7 @@ export async function GET(request: Request) {
       getProducts({ limit: 250 }),
     ]);
 
-    const completed = orders.filter(
-      (o) =>
-        o.financial_status === "paid" ||
-        o.financial_status === "partially_refunded"
-    );
-
-    // Build product inventory map from products
+    // Build product inventory map
     const inventoryMap = new Map<
       number,
       { title: string; sku: string; inventory: number }
@@ -45,60 +39,68 @@ export async function GET(request: Request) {
         (s, v) => s + (v.inventory_quantity > 0 ? v.inventory_quantity : 0),
         0
       );
-      const firstSku = p.variants[0]?.sku || "";
       inventoryMap.set(p.id, {
         title: p.title,
-        sku: firstSku,
+        sku: p.variants[0]?.sku || "",
         inventory: totalInv,
       });
     });
 
-    // Aggregate by product from order line items
-    const productMap = new Map<
-      number,
-      { name: string; sku: string; revenue: number; units: number }
-    >();
+    // Compute product analytics with channel attribution & return rates
+    const productAnalytics = computeProductAnalytics(orders);
+    const rangeDays = Math.max(
+      1,
+      Math.round((now.getTime() - startDate.getTime()) / 86_400_000)
+    );
 
-    completed.forEach((o) => {
-      o.line_items.forEach((li) => {
-        const entry = productMap.get(li.product_id) ?? {
-          name: li.title,
-          sku: li.sku || "",
+    // Merge analytics with inventory data
+    const productList = productAnalytics.map((p) => {
+      const inv = inventoryMap.get(p.productId);
+      const inventory = inv?.inventory ?? 0;
+      const dailySellRate = rangeDays > 0 ? p.units / rangeDays : 0;
+      const daysOfStock =
+        dailySellRate > 0 ? Math.round(inventory / dailySellRate) : null;
+
+      return {
+        ...p,
+        sku: p.sku || inv?.sku || "",
+        inventory,
+        dailySellRate: +dailySellRate.toFixed(2),
+        daysOfStock,
+      };
+    });
+
+    // Compute channel summary across all products
+    const channelTotals = new Map<
+      string,
+      { revenue: number; units: number; orders: number }
+    >();
+    productAnalytics.forEach((p) => {
+      p.channels.forEach((ch) => {
+        const existing = channelTotals.get(ch.channel) ?? {
           revenue: 0,
           units: 0,
+          orders: 0,
         };
-        entry.revenue += parseFloat(li.price) * li.quantity;
-        entry.units += li.quantity;
-        if (!entry.sku && li.sku) entry.sku = li.sku;
-        productMap.set(li.product_id, entry);
+        existing.revenue += ch.revenue;
+        existing.units += ch.units;
+        existing.orders += ch.orders;
+        channelTotals.set(ch.channel, existing);
       });
     });
 
-    const productList = Array.from(productMap.entries())
-      .map(([productId, data]) => {
-        const inv = inventoryMap.get(productId);
-        const inventory = inv?.inventory ?? 0;
-        const rangeDays = Math.max(1, Math.round((now.getTime() - startDate.getTime()) / 86_400_000));
-        const dailySellRate = rangeDays > 0 ? data.units / rangeDays : 0;
-        const daysOfStock =
-          dailySellRate > 0 ? Math.round(inventory / dailySellRate) : null;
+    const totalRevenue = productAnalytics.reduce((s, p) => s + p.revenue, 0);
+    const channelSummary = Array.from(channelTotals.entries())
+      .map(([channel, d]) => ({
+        channel,
+        revenue: +d.revenue.toFixed(2),
+        units: d.units,
+        orders: d.orders,
+        pct: totalRevenue > 0 ? +(d.revenue / totalRevenue * 100).toFixed(1) : 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
 
-        return {
-          productId,
-          name: data.name,
-          sku: data.sku || inv?.sku || "",
-          revenue: +data.revenue.toFixed(2),
-          units: data.units,
-          aov: data.units > 0 ? +(data.revenue / data.units).toFixed(2) : 0,
-          inventory,
-          dailySellRate: +dailySellRate.toFixed(2),
-          daysOfStock,
-        };
-      })
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 20);
-
-    return NextResponse.json({ products: productList });
+    return NextResponse.json({ products: productList, channelSummary });
   } catch (error) {
     console.error("Products API error:", error);
     return NextResponse.json(

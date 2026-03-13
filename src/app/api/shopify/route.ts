@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import {
   getOrders,
   getProducts,
-  getCustomers,
   computeShopifyKPIs,
   computeCustomerMix,
   computeHourlyOrders,
@@ -55,8 +54,13 @@ export async function GET(request: Request) {
     const prevStartDate = new Date(startDate);
     prevStartDate.setDate(startDate.getDate() - days);
 
-    // Fetch all data in parallel: current orders, previous orders, products, customers
-    const [currentOrders, prevOrders, products, customers] = await Promise.all([
+    // Cohort data needs 6 months of orders regardless of the dashboard date range
+    const sixMonthsAgo = new Date(now);
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    sixMonthsAgo.setDate(1); // start of month for clean cohort boundaries
+
+    // Fetch all data in parallel: current orders, previous orders, products, 6-month orders for cohort
+    const [currentOrders, prevOrders, products, cohortOrders] = await Promise.all([
       getOrders({
         created_at_min: startDate.toISOString(),
         created_at_max: now.toISOString(),
@@ -68,7 +72,11 @@ export async function GET(request: Request) {
         status: "any",
       }),
       getProducts({ limit: 250 }),
-      getCustomers({ limit: 250 }),
+      getOrders({
+        created_at_min: sixMonthsAgo.toISOString(),
+        created_at_max: now.toISOString(),
+        status: "any",
+      }),
     ]);
 
     // Pass periodStart so new/returning is determined by customer.created_at
@@ -107,15 +115,18 @@ export async function GET(request: Request) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, data]) => ({ date, ...data }));
 
-    // Compute all additional data — pass periodStart for new/returning
+    // Compute all additional data
     const customerMix = computeCustomerMix(currentOrders, startDate);
     const hourlyOrders = computeHourlyOrders(currentOrders);
     const geoData = computeGeoData(currentOrders);
     const shopifyCategories = computeCategories(currentOrders, products);
     const topProducts = computeTopProducts(currentOrders);
-    const shopifyLTV = computeLTV(customers);
-    const shopifyRepeatData = computeRepeatData(currentOrders, customers, startDate);
-    const cohortData = computeCohortData(currentOrders);
+    // LTV uses the 6-month order window for more representative data
+    const shopifyLTV = computeLTV(cohortOrders);
+    // Repeat data derived from current period orders (no separate customer fetch needed)
+    const shopifyRepeatData = computeRepeatData(currentOrders, startDate);
+    // Cohort retention uses 6 months of orders for proper monthly cohort tracking
+    const cohortData = computeCohortData(cohortOrders);
 
     return NextResponse.json({
       kpis: {

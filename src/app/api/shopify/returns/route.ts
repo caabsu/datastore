@@ -40,28 +40,36 @@ export async function GET(request: Request) {
     ]);
 
     // ── Refund Analytics ──
-    // Filter to orders that have refunds created within the date range
+    // Filter to orders that have monetary refunds created within the date range
     function hasRefundInRange(order: ShopifyOrder): boolean {
       return order.refunds.some((r) => {
         try {
           const refundDate = new Date(r.created_at);
-          return refundDate >= startDate && refundDate <= endDate;
+          if (refundDate < startDate || refundDate > endDate) return false;
+          // Must have at least one non-zero refund line item
+          return r.refund_line_items.some((rli) => rli.subtotal > 0);
         } catch {
           return false;
         }
       });
     }
 
-    // Get only refunds within the date range per order
+    // Get only refunds within the date range per order (with monetary value)
     function getRefundsInRange(order: ShopifyOrder) {
-      return order.refunds.filter((r) => {
-        try {
-          const refundDate = new Date(r.created_at);
-          return refundDate >= startDate && refundDate <= endDate;
-        } catch {
-          return false;
-        }
-      });
+      return order.refunds
+        .filter((r) => {
+          try {
+            const refundDate = new Date(r.created_at);
+            return refundDate >= startDate && refundDate <= endDate;
+          } catch {
+            return false;
+          }
+        })
+        .map((r) => ({
+          ...r,
+          refund_line_items: r.refund_line_items.filter((rli) => rli.subtotal > 0),
+        }))
+        .filter((r) => r.refund_line_items.length > 0);
     }
 
     const ordersWithRefundsInRange = updatedOrders.filter(hasRefundInRange);

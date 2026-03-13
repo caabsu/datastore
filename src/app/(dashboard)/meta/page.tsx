@@ -549,7 +549,7 @@ export default function MetaOverviewPage() {
       {/* ── Spend & Revenue Trend (ComposedChart) ── */}
       <div className="bg-surface border border-border rounded-lg p-5">
         <h3 className="text-sm font-medium text-zinc-400 mb-4">
-          Spend & Revenue Trend — Last 28 Days
+          Spend & Revenue Trend — {days === 1 ? "Today" : `Last ${days} Days`}
         </h3>
         {dailyTrend.length > 0 ? (
           <ResponsiveContainer width="100%" height={320}>
@@ -700,14 +700,14 @@ export default function MetaOverviewPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                  <th className="px-2 py-2">Type</th>
-                  <th className="px-2 py-2 text-right">Ads</th>
-                  <th className="px-2 py-2 text-right">Spend</th>
-                  <th className="px-2 py-2 text-right">Revenue</th>
-                  <th className="px-2 py-2 text-right">ROAS</th>
-                  <th className="px-2 py-2 text-right">Purch.</th>
-                  <th className="px-2 py-2 text-right">CPA</th>
-                  <th className="px-2 py-2 text-right">CM</th>
+                  <th className="px-3 py-2.5">Type</th>
+                  <th className="px-3 py-2.5 text-right">Ads</th>
+                  <th className="pl-4 pr-3 py-2.5 text-right border-l border-border/40">Spend</th>
+                  <th className="px-3 py-2.5 text-right">Revenue</th>
+                  <th className="px-3 py-2.5 text-right">ROAS</th>
+                  <th className="pl-4 pr-3 py-2.5 text-right border-l border-border/40">Purch.</th>
+                  <th className="px-3 py-2.5 text-right">CPA</th>
+                  <th className="pl-4 pr-3 py-2.5 text-right border-l border-border/40">CM</th>
                 </tr>
               </thead>
               <tbody>
@@ -716,8 +716,8 @@ export default function MetaOverviewPage() {
                     key={row.type}
                     className="border-b border-border/50 data-row transition-colors"
                   >
-                    <td className="px-2 py-2.5">
-                      <span className="flex items-center gap-2">
+                    <td className="px-3 py-3">
+                      <span className="flex items-center gap-2.5">
                         <span
                           className="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0"
                           style={{ backgroundColor: row.color }}
@@ -727,27 +727,27 @@ export default function MetaOverviewPage() {
                         </span>
                       </span>
                     </td>
-                    <td className="px-2 py-2.5 text-right font-mono text-zinc-400">
+                    <td className="px-3 py-3 text-right font-mono text-zinc-400">
                       {row.count}
                     </td>
-                    <td className="px-2 py-2.5 text-right font-mono">
+                    <td className="pl-4 pr-3 py-3 text-right font-mono font-medium border-l border-border/40">
                       {formatCurrency(row.spend)}
                     </td>
-                    <td className="px-2 py-2.5 text-right font-mono">
+                    <td className="px-3 py-3 text-right font-mono font-medium">
                       {formatCurrency(row.revenue)}
                     </td>
-                    <td className="px-2 py-2.5 text-right font-mono font-medium">
+                    <td className="px-3 py-3 text-right font-mono font-semibold">
                       {formatMultiplier(row.roas)}
                     </td>
-                    <td className="px-2 py-2.5 text-right font-mono">
+                    <td className="pl-4 pr-3 py-3 text-right font-mono border-l border-border/40">
                       {row.purchases}
                     </td>
-                    <td className="px-2 py-2.5 text-right font-mono">
+                    <td className="px-3 py-3 text-right font-mono">
                       {formatCurrency(row.cpa, 2)}
                     </td>
                     <td
                       className={clsx(
-                        "px-2 py-2.5 text-right font-mono",
+                        "pl-4 pr-3 py-3 text-right font-mono font-medium border-l border-border/40",
                         row.cm >= 0 ? "text-emerald-400" : "text-red-400"
                       )}
                     >
@@ -757,21 +757,21 @@ export default function MetaOverviewPage() {
                 ))}
                 {/* Totals */}
                 <tr className="border-t-2 border-border font-semibold">
-                  <td className="px-2 py-2.5 text-foreground">Total</td>
-                  <td className="px-2 py-2.5 text-right font-mono text-zinc-400">
+                  <td className="px-3 py-3 text-foreground">Total</td>
+                  <td className="px-3 py-3 text-right font-mono text-zinc-400">
                     {creativeBreakdown.reduce((s, r) => s + r.count, 0)}
                   </td>
-                  <td className="px-2 py-2.5 text-right font-mono">
+                  <td className="pl-4 pr-3 py-3 text-right font-mono border-l border-border/40">
                     {formatCurrency(
                       creativeBreakdown.reduce((s, r) => s + r.spend, 0)
                     )}
                   </td>
-                  <td className="px-2 py-2.5 text-right font-mono">
+                  <td className="px-3 py-3 text-right font-mono">
                     {formatCurrency(
                       creativeBreakdown.reduce((s, r) => s + r.revenue, 0)
                     )}
                   </td>
-                  <td className="px-2 py-2.5 text-right font-mono font-medium">
+                  <td className="px-3 py-3 text-right font-mono font-semibold">
                     {formatMultiplier(
                       creativeBreakdown.reduce((s, r) => s + r.spend, 0) > 0
                         ? creativeBreakdown.reduce((s, r) => s + r.revenue, 0) /
@@ -779,13 +779,13 @@ export default function MetaOverviewPage() {
                         : 0
                     )}
                   </td>
-                  <td className="px-2 py-2.5 text-right font-mono">
+                  <td className="pl-4 pr-3 py-3 text-right font-mono border-l border-border/40">
                     {creativeBreakdown.reduce(
                       (s, r) => s + r.purchases,
                       0
                     )}
                   </td>
-                  <td className="px-2 py-2.5 text-right font-mono">
+                  <td className="px-3 py-3 text-right font-mono">
                     {formatCurrency(
                       creativeBreakdown.reduce((s, r) => s + r.purchases, 0) > 0
                         ? creativeBreakdown.reduce((s, r) => s + r.spend, 0) /
@@ -796,7 +796,7 @@ export default function MetaOverviewPage() {
                   </td>
                   <td
                     className={clsx(
-                      "px-2 py-2.5 text-right font-mono",
+                      "pl-4 pr-3 py-3 text-right font-mono border-l border-border/40",
                       creativeBreakdown.reduce((s, r) => s + r.cm, 0) >= 0
                         ? "text-emerald-400"
                         : "text-red-400"
@@ -827,12 +827,12 @@ export default function MetaOverviewPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                  <th className="px-2 py-2">Audience</th>
-                  <th className="px-2 py-2 text-right">Spend</th>
-                  <th className="px-2 py-2 text-right">Revenue</th>
-                  <th className="px-2 py-2 text-right">ROAS</th>
-                  <th className="px-2 py-2 text-right">Purch.</th>
-                  <th className="px-2 py-2 text-right">Reach CPM</th>
+                  <th className="px-3 py-2.5">Age Group</th>
+                  <th className="pl-4 pr-3 py-2.5 text-right border-l border-border/40">Spend</th>
+                  <th className="px-3 py-2.5 text-right">Revenue</th>
+                  <th className="px-3 py-2.5 text-right">ROAS</th>
+                  <th className="pl-4 pr-3 py-2.5 text-right border-l border-border/40">Purch.</th>
+                  <th className="px-3 py-2.5 text-right">Reach CPM</th>
                 </tr>
               </thead>
               <tbody>
@@ -841,48 +841,48 @@ export default function MetaOverviewPage() {
                     key={row.audience}
                     className="border-b border-border/50 data-row transition-colors"
                   >
-                    <td className="px-2 py-2.5">
-                      <span className="flex items-center gap-2">
+                    <td className="px-3 py-3">
+                      <span className="flex items-center gap-2.5">
                         <span
                           className="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0"
                           style={{ backgroundColor: row.color }}
                         />
-                        <span className="font-medium text-zinc-200 text-xs">
+                        <span className="font-medium text-zinc-200">
                           {row.audience}
                         </span>
                       </span>
                     </td>
-                    <td className="px-2 py-2.5 text-right font-mono">
+                    <td className="pl-4 pr-3 py-3 text-right font-mono font-medium border-l border-border/40">
                       {formatCurrency(row.spend)}
                     </td>
-                    <td className="px-2 py-2.5 text-right font-mono">
+                    <td className="px-3 py-3 text-right font-mono font-medium">
                       {formatCurrency(row.revenue)}
                     </td>
-                    <td className="px-2 py-2.5 text-right font-mono font-medium">
+                    <td className="px-3 py-3 text-right font-mono font-semibold">
                       {formatMultiplier(row.roas)}
                     </td>
-                    <td className="px-2 py-2.5 text-right font-mono">
+                    <td className="pl-4 pr-3 py-3 text-right font-mono border-l border-border/40">
                       {row.purchases}
                     </td>
-                    <td className="px-2 py-2.5 text-right font-mono">
+                    <td className="px-3 py-3 text-right font-mono">
                       {formatCurrency(row.reachCPM, 2)}
                     </td>
                   </tr>
                 ))}
                 {/* Totals */}
                 <tr className="border-t-2 border-border font-semibold">
-                  <td className="px-2 py-2.5 text-foreground">Total</td>
-                  <td className="px-2 py-2.5 text-right font-mono">
+                  <td className="px-3 py-3 text-foreground">Total</td>
+                  <td className="pl-4 pr-3 py-3 text-right font-mono border-l border-border/40">
                     {formatCurrency(
                       audienceBreakdown.reduce((s, r) => s + r.spend, 0)
                     )}
                   </td>
-                  <td className="px-2 py-2.5 text-right font-mono">
+                  <td className="px-3 py-3 text-right font-mono">
                     {formatCurrency(
                       audienceBreakdown.reduce((s, r) => s + r.revenue, 0)
                     )}
                   </td>
-                  <td className="px-2 py-2.5 text-right font-mono font-medium">
+                  <td className="px-3 py-3 text-right font-mono font-semibold">
                     {formatMultiplier(
                       audienceBreakdown.reduce((s, r) => s + r.spend, 0) > 0
                         ? audienceBreakdown.reduce((s, r) => s + r.revenue, 0) /
@@ -890,13 +890,13 @@ export default function MetaOverviewPage() {
                         : 0
                     )}
                   </td>
-                  <td className="px-2 py-2.5 text-right font-mono">
+                  <td className="pl-4 pr-3 py-3 text-right font-mono border-l border-border/40">
                     {audienceBreakdown.reduce(
                       (s, r) => s + r.purchases,
                       0
                     )}
                   </td>
-                  <td className="px-2 py-2.5 text-right font-mono text-zinc-500">
+                  <td className="px-3 py-3 text-right font-mono text-zinc-500">
                     —
                   </td>
                 </tr>
@@ -991,21 +991,37 @@ export default function MetaOverviewPage() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm border-separate border-spacing-0">
             <thead>
-              <tr className="border-b border-border text-left text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
-                <th className="pl-3 pr-1 py-2.5 w-[24px]"></th>
-                <th className="px-2 py-2.5">Name</th>
-                <th className="px-2 py-2.5">Info</th>
-                <th className="px-2 py-2.5 text-right">Spend</th>
-                <th className="px-2 py-2.5 text-right">Revenue</th>
-                <th className="px-2 py-2.5 text-right">ROAS</th>
-                <th className="px-2 py-2.5 text-right">CPA</th>
-                <th className="px-2 py-2.5 text-right">Purch.</th>
-                <th className="px-2 py-2.5 text-right">Reach CPM</th>
-                <th className="px-2 py-2.5 text-right">Freq.</th>
-                <th className="px-2 py-2.5 text-right">CTR</th>
-                <th className="px-2 py-2.5 text-right">CPC</th>
+              {/* Column group headers */}
+              <tr className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+                <th colSpan={3}></th>
+                <th colSpan={3} className="px-3 pt-2 pb-1 text-center border-l border-border/40">
+                  <span className="text-[#1877F2]/70">Financial</span>
+                </th>
+                <th colSpan={2} className="px-3 pt-2 pb-1 text-center border-l border-border/40">
+                  <span className="text-zinc-600">Efficiency</span>
+                </th>
+                <th colSpan={2} className="px-3 pt-2 pb-1 text-center border-l border-border/40">
+                  <span className="text-zinc-600">Delivery</span>
+                </th>
+                <th colSpan={2} className="px-3 pt-2 pb-1 text-center border-l border-border/40">
+                  <span className="text-zinc-600">Engagement</span>
+                </th>
+              </tr>
+              <tr className="border-b border-border text-left text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
+                <th className="pl-3 pr-1 py-2 w-[24px]"></th>
+                <th className="px-3 py-2">Name</th>
+                <th className="px-3 py-2 w-[120px]">Info</th>
+                <th className="pl-4 pr-3 py-2 text-right border-l border-border/40">Spend</th>
+                <th className="px-3 py-2 text-right">Revenue</th>
+                <th className="px-3 py-2 text-right">ROAS</th>
+                <th className="pl-4 pr-3 py-2 text-right border-l border-border/40">CPA</th>
+                <th className="px-3 py-2 text-right">Purch.</th>
+                <th className="pl-4 pr-3 py-2 text-right border-l border-border/40">Reach CPM</th>
+                <th className="px-3 py-2 text-right">Freq.</th>
+                <th className="pl-4 pr-3 py-2 text-right border-l border-border/40">CTR</th>
+                <th className="px-3 py-2 text-right">CPC</th>
               </tr>
             </thead>
             <tbody>
@@ -1024,16 +1040,16 @@ export default function MetaOverviewPage() {
                       className="border-b border-border/50 cursor-pointer transition-colors hover:bg-white/[0.02] bg-zinc-900/20"
                       onClick={() => toggleCampaign(campaign.id)}
                     >
-                      <td className="pl-3 pr-1 py-2.5 text-zinc-500">
+                      <td className="pl-3 pr-1 py-3 text-zinc-500">
                         {isCampaignExpanded ? (
                           <ChevronDown className="h-3.5 w-3.5" />
                         ) : (
                           <ChevronRight className="h-3.5 w-3.5" />
                         )}
                       </td>
-                      <td className="px-2 py-2.5">
+                      <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-foreground">
+                          <span className="font-semibold text-foreground text-[13px]">
                             {campaign.name}
                           </span>
                           <span
@@ -1048,8 +1064,8 @@ export default function MetaOverviewPage() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-2 py-2.5">
-                        <div className="flex items-center gap-2">
+                      <td className="px-3 py-3">
+                        <div className="flex flex-col gap-0.5">
                           <span className="text-[10px] text-zinc-500">{campaign.buyingType ?? ""}</span>
                           {campaign.dailyBudget != null && (
                             <span className="text-[10px] text-zinc-600">
@@ -1058,31 +1074,31 @@ export default function MetaOverviewPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-2 py-2.5 text-right font-mono font-semibold">
+                      <td className="pl-4 pr-3 py-3 text-right font-mono font-semibold text-[13px] border-l border-border/40">
                         {formatCurrency(campaign.spend ?? 0)}
                       </td>
-                      <td className="px-2 py-2.5 text-right font-mono font-semibold">
+                      <td className="px-3 py-3 text-right font-mono font-semibold text-[13px]">
                         {formatCurrency(campaign.revenue ?? 0)}
                       </td>
-                      <td className="px-2 py-2.5 text-right font-mono font-semibold">
+                      <td className="px-3 py-3 text-right font-mono font-semibold text-[13px]">
                         {formatMultiplier(campaign.roas ?? 0)}
                       </td>
-                      <td className="px-2 py-2.5 text-right font-mono">
+                      <td className="pl-4 pr-3 py-3 text-right font-mono border-l border-border/40">
                         {formatCurrency(campaign.cpa ?? 0, 2)}
                       </td>
-                      <td className="px-2 py-2.5 text-right font-mono">
+                      <td className="px-3 py-3 text-right font-mono">
                         {campaign.purchases ?? 0}
                       </td>
-                      <td className="px-2 py-2.5 text-right font-mono">
+                      <td className="pl-4 pr-3 py-3 text-right font-mono border-l border-border/40">
                         {formatCurrency(campaign.reachCPM ?? 0, 2)}
                       </td>
-                      <td className="px-2 py-2.5 text-right font-mono text-zinc-400">
+                      <td className="px-3 py-3 text-right font-mono text-zinc-400">
                         {(campaign.frequency ?? 0).toFixed(1)}
                       </td>
-                      <td className="px-2 py-2.5 text-right font-mono text-zinc-400">
+                      <td className="pl-4 pr-3 py-3 text-right font-mono text-zinc-400 border-l border-border/40">
                         {(campaign.ctr ?? 0).toFixed(2)}%
                       </td>
-                      <td className="px-2 py-2.5 text-right font-mono text-zinc-400">
+                      <td className="px-3 py-3 text-right font-mono text-zinc-400">
                         {formatCurrency(campaign.cpc ?? 0, 2)}
                       </td>
                     </tr>
@@ -1120,7 +1136,7 @@ export default function MetaOverviewPage() {
                                 toggleAdSet(campaign.id, adSet.id);
                               }}
                             >
-                              <td className="pl-3 pr-1 py-2 text-zinc-600">
+                              <td className="pl-3 pr-1 py-2.5 text-zinc-600">
                                 <div className="pl-3">
                                   {isAdSetExpanded ? (
                                     <ChevronDown className="h-3 w-3" />
@@ -1129,7 +1145,7 @@ export default function MetaOverviewPage() {
                                   )}
                                 </div>
                               </td>
-                              <td className="px-2 py-2">
+                              <td className="px-3 py-2.5">
                                 <div className="flex items-center gap-2 pl-2">
                                   <span
                                     className={clsx(
@@ -1142,8 +1158,8 @@ export default function MetaOverviewPage() {
                                   </span>
                                 </div>
                               </td>
-                              <td className="px-2 py-2">
-                                <div className="flex items-center gap-1.5">
+                              <td className="px-3 py-2.5">
+                                <div className="flex flex-col gap-0.5">
                                   <span className="text-[10px] text-zinc-500">{adSet.optimizationGoal ?? ""}</span>
                                   {targetingLabel && (
                                     <span className="text-[10px] text-zinc-600 truncate max-w-[120px]" title={targetingLabel}>
@@ -1152,33 +1168,33 @@ export default function MetaOverviewPage() {
                                   )}
                                 </div>
                               </td>
-                              <td className="px-2 py-2 text-right font-mono text-xs font-medium">
+                              <td className="pl-4 pr-3 py-2.5 text-right font-mono text-xs font-medium border-l border-border/40">
                                 {formatCurrency(adSet.spend ?? 0)}
                               </td>
-                              <td className="px-2 py-2 text-right font-mono text-xs font-medium">
+                              <td className="px-3 py-2.5 text-right font-mono text-xs font-medium">
                                 {formatCurrency(adSet.revenue ?? 0)}
                               </td>
-                              <td className="px-2 py-2 text-right">
+                              <td className="px-3 py-2.5 text-right">
                                 <span className={clsx("font-mono text-xs font-medium", (adSet.roas ?? 0) >= 3.0 ? "text-emerald-400" : (adSet.roas ?? 0) >= 2.0 ? "text-zinc-300" : "text-red-400")}>
                                   {formatMultiplier(adSet.roas ?? 0)}
                                 </span>
                               </td>
-                              <td className="px-2 py-2 text-right font-mono text-xs">
+                              <td className="pl-4 pr-3 py-2.5 text-right font-mono text-xs border-l border-border/40">
                                 {formatCurrency(adSet.cpa ?? 0, 2)}
                               </td>
-                              <td className="px-2 py-2 text-right font-mono text-xs">
+                              <td className="px-3 py-2.5 text-right font-mono text-xs">
                                 {adSet.purchases ?? 0}
                               </td>
-                              <td className="px-2 py-2 text-right font-mono text-xs">
+                              <td className="pl-4 pr-3 py-2.5 text-right font-mono text-xs border-l border-border/40">
                                 {formatCurrency(adSet.reachCPM ?? 0, 2)}
                               </td>
-                              <td className={clsx("px-2 py-2 text-right font-mono text-xs", (adSet.frequency ?? 0) <= 1.5 ? "text-emerald-400" : (adSet.frequency ?? 0) <= 2.5 ? "text-zinc-300" : "text-red-400")}>
+                              <td className={clsx("px-3 py-2.5 text-right font-mono text-xs", (adSet.frequency ?? 0) <= 1.5 ? "text-emerald-400" : (adSet.frequency ?? 0) <= 2.5 ? "text-zinc-300" : "text-red-400")}>
                                 {(adSet.frequency ?? 0).toFixed(1)}
                               </td>
-                              <td className="px-2 py-2 text-right font-mono text-xs text-zinc-400">
+                              <td className="pl-4 pr-3 py-2.5 text-right font-mono text-xs text-zinc-400 border-l border-border/40">
                                 {(adSet.ctr ?? 0).toFixed(2)}%
                               </td>
-                              <td className="px-2 py-2 text-right font-mono text-xs text-zinc-400">
+                              <td className="px-3 py-2.5 text-right font-mono text-xs text-zinc-400">
                                 {formatCurrency(adSet.cpc ?? 0, 2)}
                               </td>
                             </tr>
@@ -1198,8 +1214,8 @@ export default function MetaOverviewPage() {
                                   key={`a-${ad.id}`}
                                   className="border-b border-border/20 bg-zinc-950/40 transition-colors hover:bg-white/[0.01]"
                                 >
-                                  <td className="pl-3 pr-1 py-1.5"></td>
-                                  <td className="px-2 py-1.5">
+                                  <td className="pl-3 pr-1 py-2"></td>
+                                  <td className="px-3 py-2">
                                     <div className="flex items-center gap-2 pl-6">
                                       <span
                                         className={clsx(
@@ -1215,38 +1231,38 @@ export default function MetaOverviewPage() {
                                       )}
                                     </div>
                                   </td>
-                                  <td className="px-2 py-1.5">
+                                  <td className="px-3 py-2">
                                     <span className="text-[10px] text-zinc-600">
                                       ID: {ad.id}
                                     </span>
                                   </td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[11px]">
+                                  <td className="pl-4 pr-3 py-2 text-right font-mono text-[11px] border-l border-border/40">
                                     {formatCurrency(ad.spend ?? 0)}
                                   </td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[11px]">
+                                  <td className="px-3 py-2 text-right font-mono text-[11px]">
                                     {formatCurrency(ad.revenue ?? 0)}
                                   </td>
-                                  <td className="px-2 py-1.5 text-right">
+                                  <td className="px-3 py-2 text-right">
                                     <span className={clsx("font-mono text-[11px] font-medium", (ad.roas ?? 0) >= 3.0 ? "text-emerald-400" : (ad.roas ?? 0) >= 2.0 ? "text-zinc-300" : "text-red-400")}>
                                       {formatMultiplier(ad.roas ?? 0)}
                                     </span>
                                   </td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[11px]">
+                                  <td className="pl-4 pr-3 py-2 text-right font-mono text-[11px] border-l border-border/40">
                                     {formatCurrency(ad.cpa ?? 0, 2)}
                                   </td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[11px]">
+                                  <td className="px-3 py-2 text-right font-mono text-[11px]">
                                     {ad.purchases ?? 0}
                                   </td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[11px]">
+                                  <td className="pl-4 pr-3 py-2 text-right font-mono text-[11px] border-l border-border/40">
                                     {formatCurrency(ad.reachCPM ?? 0, 2)}
                                   </td>
-                                  <td className={clsx("px-2 py-1.5 text-right font-mono text-[11px]", (ad.frequency ?? 0) <= 1.5 ? "text-emerald-400" : (ad.frequency ?? 0) <= 2.5 ? "text-zinc-300" : "text-red-400")}>
+                                  <td className={clsx("px-3 py-2 text-right font-mono text-[11px]", (ad.frequency ?? 0) <= 1.5 ? "text-emerald-400" : (ad.frequency ?? 0) <= 2.5 ? "text-zinc-300" : "text-red-400")}>
                                     {(ad.frequency ?? 0).toFixed(1)}
                                   </td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[11px] text-zinc-400">
+                                  <td className="pl-4 pr-3 py-2 text-right font-mono text-[11px] text-zinc-400 border-l border-border/40">
                                     {(ad.ctr ?? 0).toFixed(2)}%
                                   </td>
-                                  <td className="px-2 py-1.5 text-right font-mono text-[11px] text-zinc-400">
+                                  <td className="px-3 py-2 text-right font-mono text-[11px] text-zinc-400">
                                     {formatCurrency(ad.cpc ?? 0, 2)}
                                   </td>
                                 </tr>
@@ -1260,27 +1276,29 @@ export default function MetaOverviewPage() {
 
               {/* Account Total Row */}
               <tr className="border-t-2 border-border font-semibold bg-zinc-900/10">
-                <td className="pl-3 pr-1 py-2.5"></td>
-                <td className="px-2 py-2.5 text-foreground">Account Total</td>
-                <td className="px-2 py-2.5 text-[10px] text-zinc-600">
+                <td className="pl-3 pr-1 py-3"></td>
+                <td className="px-3 py-3 text-foreground">Account Total</td>
+                <td className="px-3 py-3 text-[10px] text-zinc-600">
                   {campaigns.length} campaigns
                 </td>
-                <td className="px-2 py-2.5 text-right font-mono">
+                <td className="pl-4 pr-3 py-3 text-right font-mono text-[13px] border-l border-border/40">
                   {formatCurrency(accountTotals.spend)}
                 </td>
-                <td className="px-2 py-2.5 text-right font-mono">
+                <td className="px-3 py-3 text-right font-mono text-[13px]">
                   {formatCurrency(accountTotals.revenue)}
                 </td>
-                <td className="px-2 py-2.5 text-right font-mono">
+                <td className="px-3 py-3 text-right font-mono text-[13px]">
                   {formatMultiplier(accountTotals.roas)}
                 </td>
-                <td className="px-2 py-2.5 text-right font-mono">
+                <td className="pl-4 pr-3 py-3 text-right font-mono border-l border-border/40">
                   {formatCurrency(accountTotals.purchases > 0 ? accountTotals.spend / accountTotals.purchases : 0, 2)}
                 </td>
-                <td className="px-2 py-2.5 text-right font-mono">
+                <td className="px-3 py-3 text-right font-mono">
                   {accountTotals.purchases}
                 </td>
-                <td className="px-2 py-2.5 text-right font-mono text-muted" colSpan={4}>
+                <td className="pl-4 pr-3 py-3 text-right font-mono text-muted border-l border-border/40" colSpan={2}>
+                </td>
+                <td className="pl-4 pr-3 py-3 text-right font-mono text-muted border-l border-border/40" colSpan={2}>
                 </td>
               </tr>
             </tbody>
