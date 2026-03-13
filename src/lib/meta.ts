@@ -242,7 +242,7 @@ export async function getAds(params?: {
 
   const queryParams: Record<string, string> = {
     fields: `id,name,adset_id,campaign_id,status,creative{id,title,body,thumbnail_url},insights.fields(${INSIGHT_FIELDS})${insightDateClause}`,
-    limit: "200",
+    limit: "500",
   };
 
   // First page
@@ -261,6 +261,59 @@ export async function getAds(params?: {
   }
 
   return allAds;
+}
+
+/** Lightweight ads fetch for creative breakdown — only fetches name + spend/revenue/purchases */
+const LIGHT_INSIGHT_FIELDS = "spend,actions,action_values";
+
+export async function getAdsLightweight(params?: {
+  date_preset?: string;
+  time_range?: { since: string; until: string };
+}): Promise<{ name: string; spend: number; revenue: number; purchases: number }[]> {
+  const insightDateClause = params?.time_range
+    ? `.time_range(${JSON.stringify(params.time_range)})`
+    : `.date_preset(${params?.date_preset ?? "last_7d"})`;
+
+  const queryParams: Record<string, string> = {
+    fields: `name,insights.fields(${LIGHT_INSIGHT_FIELDS})${insightDateClause}`,
+    limit: "500",
+  };
+
+  type LightAd = {
+    name: string;
+    insights?: { data: Array<{ spend: string; actions?: { action_type: string; value: string }[]; action_values?: { action_type: string; value: string }[] }> };
+  };
+  type LightPage = { data: LightAd[]; paging?: { next?: string } };
+
+  const firstPage = await metaFetch<LightPage>(`/${AD_ACCOUNT_ID}/ads`, queryParams);
+  const allAds: LightAd[] = [...firstPage.data];
+
+  let nextUrl = firstPage.paging?.next ?? null;
+  for (let page = 1; page < 10 && nextUrl; page++) {
+    const res = await fetch(nextUrl, { cache: "no-store" });
+    if (!res.ok) break;
+    const data = await res.json() as LightPage;
+    if (!data.data?.length) break;
+    allAds.push(...data.data);
+    nextUrl = data.paging?.next ?? null;
+  }
+
+  return allAds.map((ad) => {
+    const insight = ad.insights?.data?.[0];
+    const spend = insight ? parseFloat(insight.spend) : 0;
+    const purchases = insight?.actions?.find(
+      (a) => a.action_type === "purchase" || a.action_type === "offsite_conversion.fb_pixel_purchase"
+    );
+    const revenue = insight?.action_values?.find(
+      (a) => a.action_type === "purchase" || a.action_type === "offsite_conversion.fb_pixel_purchase"
+    );
+    return {
+      name: ad.name ?? "",
+      spend,
+      revenue: revenue ? parseFloat(revenue.value) : 0,
+      purchases: purchases ? parseFloat(purchases.value) : 0,
+    };
+  });
 }
 
 export async function getAccountInsightsWithBreakdown(params?: {

@@ -5,6 +5,7 @@ import {
   getCampaigns,
   getAdSets,
   getAds,
+  getAdsLightweight,
   computeInsightMetrics,
 } from "@/lib/meta";
 
@@ -32,6 +33,106 @@ export async function GET(request: Request) {
     const dateParams = timeRange
       ? { time_range: timeRange }
       : { date_preset: datePreset! };
+
+    if (level === "all") {
+      // ── Consolidated fetch: single round-trip, all Meta API calls in parallel ──
+      const [accountInsights, dailyInsights, campaignsRaw, lightAds, audienceInsights] = await Promise.all([
+        getAccountInsights(dateParams),
+        getAccountInsights({ ...dateParams, time_increment: "1" }),
+        getCampaigns(dateParams),
+        getAdsLightweight(dateParams),
+        getAccountInsightsWithBreakdown({ ...dateParams, breakdowns: "age" }),
+      ]);
+
+      // KPIs (shared with funnel below — no duplicate API call)
+      const kpis = accountInsights.length > 0 ? computeInsightMetrics(accountInsights[0]) : null;
+
+      // Daily trend
+      const dailyTrend = dailyInsights.map((d) => {
+        const m = computeInsightMetrics(d);
+        return {
+          date: m.date_start, spend: m.spend, revenue: m.revenue,
+          roas: m.roas, purchases: m.purchases, impressions: m.impressions,
+          reach: m.reach, hookRate: m.hookRate, engagementDepth: m.engagementDepth,
+        };
+      });
+
+      // Campaigns
+      const campaigns = campaignsRaw.map((c) => {
+        const insight = c.insights?.data?.[0];
+        const metrics = insight ? computeInsightMetrics(insight) : null;
+        return {
+          id: c.id, name: c.name, status: c.status, objective: c.objective,
+          buyingType: c.buying_type,
+          dailyBudget: c.daily_budget ? parseFloat(c.daily_budget) / 100 : null,
+          ...metrics,
+        };
+      });
+
+      // Funnel — reuse accountInsights (no extra Meta API call)
+      let funnel: { stage: string; value: number; rate: number | null }[] = [];
+      if (kpis) {
+        const funnelData = [
+          { stage: "Impressions", value: kpis.impressions },
+          { stage: "Link Clicks", value: kpis.linkClicks },
+          { stage: "Add to Cart", value: kpis.addToCart },
+          { stage: "Initiate Checkout", value: kpis.initiateCheckout },
+          { stage: "Purchases", value: kpis.purchases },
+        ];
+        funnel = funnelData.map((f, i) => ({
+          stage: f.stage,
+          value: f.value,
+          rate: i === 0 || funnelData[i - 1].value === 0
+            ? null
+            : +((f.value / funnelData[i - 1].value) * 100).toFixed(2),
+        }));
+      }
+
+      // Creative breakdown — uses lightweight ads (minimal fields, fast)
+      const typeColors: Record<string, string> = {
+        Video: "#1877F2", Carousel: "#60A5FA", Image: "#93C5FD",
+      };
+      const groups: Record<string, { count: number; spend: number; revenue: number; purchases: number }> = {};
+      for (const ad of lightAds) {
+        const name = ad.name?.toLowerCase() ?? "";
+        let type = "Image";
+        if (name.includes("video") || name.includes("vid") || name.includes("ugc") || name.includes("reel")) type = "Video";
+        else if (name.includes("carousel") || name.includes("caro") || name.includes("dpa")) type = "Carousel";
+        if (!groups[type]) groups[type] = { count: 0, spend: 0, revenue: 0, purchases: 0 };
+        groups[type].count += 1;
+        groups[type].spend += ad.spend;
+        groups[type].revenue += ad.revenue;
+        groups[type].purchases += ad.purchases;
+      }
+      const creativeBreakdown = Object.entries(groups).map(([type, data]) => ({
+        type, count: data.count,
+        spend: +data.spend.toFixed(2), revenue: +data.revenue.toFixed(2),
+        roas: data.spend > 0 ? +(data.revenue / data.spend).toFixed(2) : 0,
+        purchases: data.purchases,
+        cpa: data.purchases > 0 ? +(data.spend / data.purchases).toFixed(2) : 0,
+        cm: +(data.revenue - data.spend).toFixed(2),
+        color: typeColors[type] ?? "#71717A",
+      }));
+
+      // Audience breakdown
+      const ageColors: Record<string, string> = {
+        "18-24": "#1877F2", "25-34": "#3B82F6", "35-44": "#60A5FA",
+        "45-54": "#93C5FD", "55-64": "#BFDBFE", "65+": "#DBEAFE",
+      };
+      const audienceBreakdown = audienceInsights.map((insight) => {
+        const m = computeInsightMetrics(insight);
+        const ageGroup = insight.age ?? "Unknown";
+        return {
+          audience: ageGroup, spend: +m.spend.toFixed(2), revenue: +m.revenue.toFixed(2),
+          roas: m.roas ? +m.roas.toFixed(2) : 0, purchases: m.purchases,
+          reachCPM: +m.reachCPM.toFixed(2), color: ageColors[ageGroup] ?? "#71717A",
+        };
+      });
+
+      return NextResponse.json({
+        kpis, dailyTrend, campaigns, funnel, creativeBreakdown, audienceBreakdown,
+      });
+    }
 
     if (level === "account") {
       // Account-level KPIs

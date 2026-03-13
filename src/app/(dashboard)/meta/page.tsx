@@ -272,36 +272,28 @@ export default function MetaOverviewPage() {
     return sortByActiveAndSpend(filtered);
   }, [campaigns, hideInactive]);
 
-  /* ── Fetch account-level data + campaigns on mount / sync / date change ── */
+  /* ── Fetch all data in a single consolidated request ── */
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       setError(null);
       setSyncing(true);
+      // Clear cached drill-down data when date range changes
+      setAdSetsByCampaign({});
+      setAdsByAdSet({});
+      setExpandedCampaigns(new Set());
+      setExpandedAdSets(new Set());
       try {
-        const [accountRes, campaignsRes, funnelRes, creativeRes, audienceRes] = await Promise.all([
-          fetch(`/api/meta?level=account&start=${startISO}&end=${endISO}`),
-          fetch(`/api/meta?level=campaigns&start=${startISO}&end=${endISO}`),
-          fetch(`/api/meta?level=funnel&start=${startISO}&end=${endISO}`),
-          fetch(`/api/meta?level=creative_breakdown&start=${startISO}&end=${endISO}`),
-          fetch(`/api/meta?level=audience_breakdown&start=${startISO}&end=${endISO}`),
-        ]);
+        const res = await fetch(`/api/meta?level=all&start=${startISO}&end=${endISO}`);
+        if (!res.ok) throw new Error(`Meta API error: ${res.status}`);
+        const data = await res.json();
 
-        if (!accountRes.ok) throw new Error(`Account API error: ${accountRes.status}`);
-        if (!campaignsRes.ok) throw new Error(`Campaigns API error: ${campaignsRes.status}`);
-
-        const accountData = await accountRes.json();
-        const campaignsData = await campaignsRes.json();
-        const funnelData = funnelRes.ok ? await funnelRes.json() : { funnel: [] };
-        const creativeData = creativeRes.ok ? await creativeRes.json() : { creativeBreakdown: [] };
-        const audienceData = audienceRes.ok ? await audienceRes.json() : { audienceBreakdown: [] };
-
-        setAccountKPIs(accountData.kpis);
-        setDailyTrend(accountData.dailyTrend ?? []);
-        setCampaigns(campaignsData.campaigns ?? []);
-        setFunnel(funnelData.funnel ?? []);
-        setCreativeBreakdown(creativeData.creativeBreakdown ?? []);
-        setAudienceBreakdown(audienceData.audienceBreakdown ?? []);
+        setAccountKPIs(data.kpis);
+        setDailyTrend(data.dailyTrend ?? []);
+        setCampaigns(data.campaigns ?? []);
+        setFunnel(data.funnel ?? []);
+        setCreativeBreakdown(data.creativeBreakdown ?? []);
+        setAudienceBreakdown(data.audienceBreakdown ?? []);
       } catch (err) {
         console.error("Failed to fetch Meta data:", err);
         setError(err instanceof Error ? err.message : "Failed to load Meta data");
