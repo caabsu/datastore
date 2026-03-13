@@ -245,8 +245,22 @@ export async function getAds(params?: {
     limit: "200",
   };
 
-  const data = await metaFetch<{ data: MetaAdRaw[] }>(endpoint, queryParams);
-  return data.data;
+  // First page
+  const firstPage = await metaFetch<{ data: MetaAdRaw[]; paging?: { next?: string } }>(endpoint, queryParams);
+  const allAds: MetaAdRaw[] = [...firstPage.data];
+
+  // Follow pagination cursors (max 10 pages to avoid runaway)
+  let nextUrl = firstPage.paging?.next ?? null;
+  for (let page = 1; page < 10 && nextUrl; page++) {
+    const res = await fetch(nextUrl, { cache: "no-store" });
+    if (!res.ok) break;
+    const data = await res.json() as { data: MetaAdRaw[]; paging?: { next?: string } };
+    if (!data.data?.length) break;
+    allAds.push(...data.data);
+    nextUrl = data.paging?.next ?? null;
+  }
+
+  return allAds;
 }
 
 export async function getAccountInsightsWithBreakdown(params?: {
