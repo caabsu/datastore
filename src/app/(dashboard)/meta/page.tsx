@@ -232,6 +232,15 @@ function LoadingSkeleton() {
   );
 }
 
+/* ── Sort helper: ACTIVE first, then by spend descending ── */
+function sortByActiveAndSpend<T extends { status: string; spend: number }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    if (a.status === "ACTIVE" && b.status !== "ACTIVE") return -1;
+    if (a.status !== "ACTIVE" && b.status === "ACTIVE") return 1;
+    return (b.spend ?? 0) - (a.spend ?? 0);
+  });
+}
+
 export default function MetaOverviewPage() {
   /* ── Dashboard context ── */
   const { days, refreshKey, setSyncing } = useDashboard();
@@ -260,6 +269,12 @@ export default function MetaOverviewPage() {
   /* ── Expansion state ── */
   const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set());
   const [expandedAdSets, setExpandedAdSets] = useState<Set<string>>(new Set());
+
+  /* ── Filtered + sorted campaigns (must be before early returns) ── */
+  const displayCampaigns = useMemo(() => {
+    const filtered = hideInactive ? campaigns.filter((c) => c.status === "ACTIVE") : campaigns;
+    return sortByActiveAndSpend(filtered);
+  }, [campaigns, hideInactive]);
 
   /* ── Fetch account-level data + campaigns on mount / sync / date change ── */
   useEffect(() => {
@@ -464,21 +479,6 @@ export default function MetaOverviewPage() {
     accountTotals.spend > 0 ? accountTotals.revenue / accountTotals.spend : 0;
 
   const funnelMax = funnel.length > 0 ? funnel[0].value : 1;
-
-  /* ── Sort helper: ACTIVE first, then by spend descending ── */
-  function sortByActiveAndSpend<T extends { status: string; spend: number }>(items: T[]): T[] {
-    return [...items].sort((a, b) => {
-      if (a.status === "ACTIVE" && b.status !== "ACTIVE") return -1;
-      if (a.status !== "ACTIVE" && b.status === "ACTIVE") return 1;
-      return (b.spend ?? 0) - (a.spend ?? 0);
-    });
-  }
-
-  /* ── Filtered + sorted campaigns ── */
-  const displayCampaigns = useMemo(() => {
-    const filtered = hideInactive ? campaigns.filter((c) => c.status === "ACTIVE") : campaigns;
-    return sortByActiveAndSpend(filtered);
-  }, [campaigns, hideInactive]);
 
   return (
     <div className="space-y-6">
